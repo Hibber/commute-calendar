@@ -194,7 +194,7 @@ export default function CalendarPage() {
             </SignInButton>
           </Show>
           <Show when="signed-in">
-            <UserButton afterSignOutUrl="/" />
+            <UserButton />
             <button 
               className="editorial-btn editorial-btn-primary"
               onClick={() => {
