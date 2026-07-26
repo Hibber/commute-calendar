@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Vercel build will crash if this is undefined during static analysis, so we provide a fallback
+const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
