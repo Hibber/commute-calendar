@@ -49,7 +49,7 @@ export default function CalendarPage() {
   // Use relative URLs in the browser to avoid CORS (works for localhost and Vercel preview URLs).
   // Use absolute URL for the Android app (Capacitor) since it doesn't have a local backend.
   const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor !== undefined;
-  const API_BASE = isCapacitor ? 'https://commute-calendar.vercel.app' : '';
+  const API_BASE = isCapacitor ? 'https://schedule.triddle.dev' : '';
 
   const fetchEvents = async () => {
     try {
