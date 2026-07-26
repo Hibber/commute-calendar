@@ -216,3 +216,84 @@ h1, h2, h3, .serif {
   border-bottom-color: var(--black);
   font-style: italic;
 }
+
+/* Layout Overrides */
+.app-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 4rem 2rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: var(--border-light);
+  padding-bottom: 2rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.up-next-widget {
+  background: var(--color-shift);
+  color: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    padding: 1.5rem 1rem;
+    gap: 1.5rem;
+  }
+  
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding-bottom: 1rem;
+  }
+  
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .up-next-widget {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.25rem;
+  }
+  
+  .rbc-calendar {
+    min-height: 75vh !important;
+  }
+  
+  .modal-content {
+    width: 95% !important;
+    max-width: 100% !important;
+    padding: 24px !important;
+  }
+  
+  .modal-overlay {
+    padding: 10px;
+  }
+  
+  /* Make time inputs stack on mobile instead of sitting side-by-side */
+  .time-inputs-container {
+    flex-direction: column !important;
+    gap: 1rem !important;
+  }
+}

@@ -244,15 +244,15 @@ export default function CalendarPage() {
       </Show>
       
       <Show when="signed-in">
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '4rem 2rem', minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: '3rem' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: 'var(--border-light)', paddingBottom: '2rem' }}>
+        <div className="app-container">
+      <header className="app-header">
         <div>
           <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Calendar</h1>
           <p style={{ margin: '0.5rem 0 0 0', fontSize: '1.1rem', color: 'var(--text-muted)', fontWeight: 300 }}>
             Coordinating Travis's schedule with Austin and Karey
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="header-actions">
           <button 
             onClick={toggleTheme}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
@@ -294,7 +294,7 @@ export default function CalendarPage() {
           }
 
           return (
-            <div style={{ background: 'var(--color-shift)', color: '#fff', padding: '1.5rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="up-next-widget">
               <div>
                 <h3 className="serif" style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Up Next: Travis Shift</h3>
                 <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {nextShift.startTime}</p>
@@ -411,7 +411,7 @@ export default function CalendarPage() {
               </div>
 
               {!formIsAllDay && (
-                <div style={{ display: 'flex', gap: '2rem' }}>
+                <div className="time-inputs-container" style={{ display: 'flex', gap: '2rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
                     <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Start Time</label>
                     <input className="editorial-input" type="time" required value={formStartTime} onChange={e => setFormStartTime(e.target.value)} />
