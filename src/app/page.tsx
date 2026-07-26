@@ -5,7 +5,7 @@ import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { X, CalendarPlus, Trash2 } from 'lucide-react';
-import { SignInButton, Show, UserButton, useUser } from '@clerk/nextjs';
+import { SignInButton, Show, UserButton, useUser, SignIn } from '@clerk/nextjs';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const locales = {
@@ -182,7 +182,19 @@ export default function CalendarPage() {
   };
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '4rem 2rem', minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: '3rem' }}>
+    <>
+      <Show when="signed-out">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#fafafa' }}>
+          <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+            <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: '#111' }}>Commute Calendar</h1>
+            <p style={{ margin: '0.5rem 0 0 0', color: '#888' }}>Please sign in to view the schedule.</p>
+          </div>
+          <SignIn routing="hash" />
+        </div>
+      </Show>
+      
+      <Show when="signed-in">
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '4rem 2rem', minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: '3rem' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1px solid #eee', paddingBottom: '2rem' }}>
         <div>
           <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: '#111' }}>Commute Calendar</h1>
@@ -191,27 +203,20 @@ export default function CalendarPage() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Show when="signed-out">
-            <SignInButton mode="modal">
-              <button className="editorial-btn editorial-btn-primary">Sign In</button>
-            </SignInButton>
-          </Show>
-          <Show when="signed-in">
-            <UserButton />
-            <button 
-              className="editorial-btn editorial-btn-primary"
-              onClick={() => {
-                setFormDates([format(new Date(), 'yyyy-MM-dd')]);
-                setSelectedEventId(null);
-                if (isAdmin) setFormType('shift');
-                else if (isAustin) setFormType('austin');
-                else if (isKarey) setFormType('karey');
-                setIsModalOpen(true);
-              }}
-            >
-              <CalendarPlus size={18} /> Schedule Block
-            </button>
-          </Show>
+          <UserButton />
+          <button 
+            className="editorial-btn editorial-btn-primary"
+            onClick={() => {
+              setFormDates([format(new Date(), 'yyyy-MM-dd')]);
+              setSelectedEventId(null);
+              if (isAdmin) setFormType('shift');
+              else if (isAustin) setFormType('austin');
+              else if (isKarey) setFormType('karey');
+              setIsModalOpen(true);
+            }}
+          >
+            <CalendarPlus size={18} /> Schedule Block
+          </button>
         </div>
       </header>
       
@@ -334,5 +339,7 @@ export default function CalendarPage() {
         </div>
       )}
     </div>
+    </Show>
+    </>
   );
 }
