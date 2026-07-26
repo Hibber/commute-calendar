@@ -77,11 +77,11 @@ h1, h2, h3, .serif {
 }
 .editorial-btn-primary {
   background: var(--black);
-  color: white;
+  color: var(--bg-main);
   border-color: var(--black);
 }
 .editorial-btn-primary:hover {
-  background: #444;
+  background: var(--text-muted);
 }
 
 .editorial-card {
