@@ -4,7 +4,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
-import { X, CalendarPlus, Trash2 } from 'lucide-react';
+import { X, CalendarPlus, Trash2, Moon, Sun } from 'lucide-react';
 import { SignInButton, Show, UserButton, useUser, SignIn } from '@clerk/nextjs';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
@@ -46,6 +46,7 @@ export default function CalendarPage() {
   const [formIsRecurring, setFormIsRecurring] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   
   const { user } = useUser();
   const isAdmin = user?.publicMetadata?.role === 'admin';
@@ -72,7 +73,22 @@ export default function CalendarPage() {
   useEffect(() => {
     setIsMounted(true);
     fetchEvents();
+    
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
   }, []);
+
+  const toggleTheme = () => {
+    const isCurrentlyDark = document.documentElement.getAttribute('data-theme') === 'dark' || 
+                            (!document.documentElement.hasAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const newTheme = isCurrentlyDark ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
 
   if (!isMounted) return null;
 
@@ -237,6 +253,13 @@ export default function CalendarPage() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button 
+            onClick={toggleTheme}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+            title="Toggle theme"
+          >
+            {theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
           <UserButton />
           <button 
             className="editorial-btn editorial-btn-primary"

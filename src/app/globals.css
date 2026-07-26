@@ -13,7 +13,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg-main: #111111; 
     --black: #fcfcfc;
     --text-muted: #aaaaaa;
@@ -22,6 +22,16 @@
     --shadow-soft: 0 20px 40px rgba(0,0,0,0.5);
     --modal-overlay: rgba(17,17,17,0.85);
   }
+}
+
+:root[data-theme="dark"] {
+  --bg-main: #111111; 
+  --black: #fcfcfc;
+  --text-muted: #aaaaaa;
+  --border-light: 1px solid #333333;
+  
+  --shadow-soft: 0 20px 40px rgba(0,0,0,0.5);
+  --modal-overlay: rgba(17,17,17,0.85);
 }
 
 body {
