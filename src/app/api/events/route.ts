@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +29,19 @@ export async function POST(request: Request) {
       VALUES (${type}, ${date}, ${startTime}, ${endTime}, ${notes}, ${is_all_day}, ${is_recurring}, ${claimed_by}, ${status})
       RETURNING *
     `;
+    
+    if (type === 'shift') {
+      try {
+        await resend.emails.send({
+          from: 'Commute Calendar <onboarding@resend.dev>',
+          to: ['travis@triddle.dev'], // Replace with verified recipient or domain
+          subject: 'New Commute Shift Scheduled',
+          html: `<p>A new commute shift has been scheduled for <strong>${date}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a>.</p>`
+        });
+      } catch (e) {
+        console.error('Failed to send email:', e);
+      }
+    }
     
     return NextResponse.json(rows[0]);
   } catch (error) {
