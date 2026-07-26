@@ -5,6 +5,7 @@ import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { X, CalendarPlus, Trash2 } from 'lucide-react';
+import { SignInButton, SignedIn, SignedOut, UserButton, useUser } from '@clerk/nextjs';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const locales = {
@@ -40,11 +41,22 @@ export default function CalendarPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   
+  const { user } = useUser();
+  const isAdmin = user?.publicMetadata?.role === 'admin';
+  const isAustin = user?.firstName?.toLowerCase() === 'austin' || user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().includes('austin');
+  const isKarey = user?.firstName?.toLowerCase() === 'karey' || user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().includes('karey');
+  
+  const API_BASE = 'https://commute-calendar.vercel.app';
+
   const fetchEvents = async () => {
-    const res = await fetch('/api/events');
-    const data = await res.json();
-    if (data.events) {
-      setEvents(data.events);
+    try {
+      const res = await fetch(`${API_BASE}/api/events`);
+      const data = await res.json();
+      if (data.events) {
+        setEvents(data.events);
+      }
+    } catch (e) {
+      console.error('Failed to fetch', e);
     }
   };
 
@@ -123,7 +135,12 @@ export default function CalendarPage() {
     setFormDates([dateStr]);
     setFormStartTime(stTime);
     setFormEndTime(enTime);
-    setFormType('shift');
+    
+    if (isAdmin) setFormType('shift');
+    else if (isAustin) setFormType('austin');
+    else if (isKarey) setFormType('karey');
+    else setFormType('shift');
+    
     setSelectedEventId(null);
     setIsModalOpen(true);
   };
@@ -139,7 +156,7 @@ export default function CalendarPage() {
 
   const handleDelete = async () => {
     if (!selectedEventId) return;
-    await fetch(`/api/events/${selectedEventId}`, { method: 'DELETE' });
+    await fetch(`${API_BASE}/api/events/${selectedEventId}`, { method: 'DELETE' });
     setIsModalOpen(false);
     fetchEvents();
   };
@@ -147,11 +164,11 @@ export default function CalendarPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (selectedEventId) {
-      await fetch(`/api/events/${selectedEventId}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/api/events/${selectedEventId}`, { method: 'DELETE' });
     }
     for (const date of formDates) {
       const payload = { type: formType, date, startTime: formStartTime, endTime: formEndTime, notes: '' };
-      await fetch('/api/events', {
+      await fetch(`${API_BASE}/api/events`, {
         method: 'POST',
         body: JSON.stringify(payload),
         headers: { 'Content-Type': 'application/json' }
@@ -170,16 +187,29 @@ export default function CalendarPage() {
             Coordinating Travis's schedule with Austin and Karey
           </p>
         </div>
-        <button 
-          className="editorial-btn editorial-btn-primary"
-          onClick={() => {
-            setFormDates([format(new Date(), 'yyyy-MM-dd')]);
-            setSelectedEventId(null);
-            setIsModalOpen(true);
-          }}
-        >
-          <CalendarPlus size={18} /> Schedule Block
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button className="editorial-btn editorial-btn-primary">Sign In</button>
+            </SignInButton>
+          </SignedOut>
+          <SignedIn>
+            <UserButton afterSignOutUrl="/" />
+            <button 
+              className="editorial-btn editorial-btn-primary"
+              onClick={() => {
+                setFormDates([format(new Date(), 'yyyy-MM-dd')]);
+                setSelectedEventId(null);
+                if (isAdmin) setFormType('shift');
+                else if (isAustin) setFormType('austin');
+                else if (isKarey) setFormType('karey');
+                setIsModalOpen(true);
+              }}
+            >
+              <CalendarPlus size={18} /> Schedule Block
+            </button>
+          </SignedIn>
+        </div>
       </header>
       
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -245,7 +275,7 @@ export default function CalendarPage() {
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: '#888' }}>Person</label>
-                <select className="editorial-input" value={formType} onChange={e => setFormType(e.target.value as any)}>
+                <select className="editorial-input" value={formType} onChange={e => setFormType(e.target.value as any)} disabled={!isAdmin}>
                   <option value="shift">Travis (Needs Ride)</option>
                   <option value="austin">Austin (Unavailable)</option>
                   <option value="karey">Karey (Unavailable)</option>
@@ -288,7 +318,7 @@ export default function CalendarPage() {
               </div>
               
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #eee' }}>
-                {selectedEventId && (
+                {selectedEventId && (isAdmin || (isAustin && formType === 'austin') || (isKarey && formType === 'karey')) && (
                   <button type="button" onClick={handleDelete} className="editorial-btn" style={{ marginRight: 'auto', color: '#d32f2f', borderColor: 'transparent' }}>
                     <Trash2 size={16} /> Delete
                   </button>
