@@ -48,6 +48,9 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   
+  const [trafficData, setTrafficData] = useState<any>(null);
+  const [isTrafficLoading, setIsTrafficLoading] = useState(false);
+  
   const { user } = useUser();
   const isAdmin = user?.publicMetadata?.role === 'admin';
   const isAustin = user?.firstName?.toLowerCase() === 'austin' || user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().includes('austin');
@@ -70,9 +73,25 @@ export default function CalendarPage() {
     }
   };
 
+  const fetchTraffic = async () => {
+    try {
+      setIsTrafficLoading(true);
+      const res = await fetch(`${API_BASE}/api/traffic`);
+      const data = await res.json();
+      if (data.success) {
+        setTrafficData(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch traffic', e);
+    } finally {
+      setIsTrafficLoading(false);
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
     fetchEvents();
+    fetchTraffic();
     
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
     if (savedTheme) {
@@ -298,6 +317,15 @@ export default function CalendarPage() {
               <div>
                 <h3 className="serif" style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Up Next: Travis Shift</h3>
                 <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {nextShift.startTime}</p>
+                {trafficData && (
+                   <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                     <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: trafficData.color }}></span>
+                     {trafficData.totalMinutes} mins to Work ({trafficData.trafficCondition})
+                   </p>
+                )}
+                {isTrafficLoading && (
+                   <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', opacity: 0.7 }}>Checking live traffic...</p>
+                )}
               </div>
               <div style={{ background: 'rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 500 }}>
                 {driverText}
