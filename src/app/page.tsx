@@ -27,6 +27,10 @@ interface EventData {
   startTime: string;
   endTime: string;
   notes: string;
+  is_all_day: boolean;
+  is_recurring: boolean;
+  claimed_by: string | null;
+  status: string;
 }
 
 export default function CalendarPage() {
@@ -38,6 +42,8 @@ export default function CalendarPage() {
   const [formDates, setFormDates] = useState<string[]>([]);
   const [formStartTime, setFormStartTime] = useState('09:00');
   const [formEndTime, setFormEndTime] = useState('17:00');
+  const [formIsAllDay, setFormIsAllDay] = useState(false);
+  const [formIsRecurring, setFormIsRecurring] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   
@@ -114,11 +120,17 @@ export default function CalendarPage() {
     let title = ev.type === 'shift' ? 'Travis' : ev.type === 'austin' ? 'Austin' : 'Karey';
     
     if (ev.type === 'shift') {
-       const matches = getMatches(ev);
-       if (matches.length > 0) {
-         title += ` (${matches.join(', ')})`;
+       if (ev.status === 'claimed') {
+         title += ` (Claimed by ${ev.claimed_by === 'austin' ? 'Austin' : 'Karey'})`;
+       } else if (ev.status === 'swap_requested') {
+         title += ` (Swap Requested by ${ev.claimed_by === 'austin' ? 'Austin' : 'Karey'})`;
        } else {
-         title += ` (No Driver)`;
+         const matches = getMatches(ev);
+         if (matches.length > 0) {
+           title += ` (${matches.join(', ')})`;
+         } else {
+           title += ` (No Driver)`;
+         }
        }
     }
 
@@ -154,6 +166,8 @@ export default function CalendarPage() {
     setFormDates([event.date]);
     setFormStartTime(event.startTime);
     setFormEndTime(event.endTime);
+    setFormIsAllDay(event.is_all_day || false);
+    setFormIsRecurring(event.is_recurring || false);
     setIsModalOpen(true);
   };
 
@@ -164,13 +178,33 @@ export default function CalendarPage() {
     fetchEvents();
   };
 
+  const handleClaim = async (newStatus: string) => {
+    if (!selectedEventId) return;
+    const name = isAustin ? 'austin' : isKarey ? 'karey' : 'admin';
+    await fetch(`${API_BASE}/api/events/${selectedEventId}`, { 
+      method: 'PUT',
+      body: JSON.stringify({ claimed_by: name, status: newStatus }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    setIsModalOpen(false);
+    fetchEvents();
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (selectedEventId) {
       await fetch(`${API_BASE}/api/events/${selectedEventId}`, { method: 'DELETE' });
     }
     for (const date of formDates) {
-      const payload = { type: formType, date, startTime: formStartTime, endTime: formEndTime, notes: '' };
+      const payload = { 
+        type: formType, 
+        date, 
+        startTime: formIsAllDay ? '00:00' : formStartTime, 
+        endTime: formIsAllDay ? '23:59' : formEndTime, 
+        notes: '',
+        is_all_day: formIsAllDay,
+        is_recurring: formIsRecurring
+      };
       await fetch(`${API_BASE}/api/events`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -184,10 +218,10 @@ export default function CalendarPage() {
   return (
     <>
       <Show when="signed-out">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#fafafa' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-main)' }}>
           <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
-            <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: '#111' }}>Commute Calendar</h1>
-            <p style={{ margin: '0.5rem 0 0 0', color: '#888' }}>Please sign in to view the schedule.</p>
+            <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Calendar</h1>
+            <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)' }}>Please sign in to view the schedule.</p>
           </div>
           <SignIn routing="hash" />
         </div>
@@ -195,10 +229,10 @@ export default function CalendarPage() {
       
       <Show when="signed-in">
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '4rem 2rem', minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: '3rem' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1px solid #eee', paddingBottom: '2rem' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: 'var(--border-light)', paddingBottom: '2rem' }}>
         <div>
-          <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: '#111' }}>Commute Calendar</h1>
-          <p style={{ margin: '0.5rem 0 0 0', fontSize: '1.1rem', color: '#888', fontWeight: 300 }}>
+          <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Calendar</h1>
+          <p style={{ margin: '0.5rem 0 0 0', fontSize: '1.1rem', color: 'var(--text-muted)', fontWeight: 300 }}>
             Coordinating Travis's schedule with Austin and Karey
           </p>
         </div>
@@ -220,7 +254,35 @@ export default function CalendarPage() {
         </div>
       </header>
       
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        {(() => {
+          const nextShift = events
+            .filter(e => e.type === 'shift' && new Date(`${e.date}T${e.startTime}`).getTime() > new Date().getTime())
+            .sort((a, b) => new Date(`${a.date}T${a.startTime}`).getTime() - new Date(`${b.date}T${b.startTime}`).getTime())[0];
+            
+          if (!nextShift) return null;
+          
+          let driverText = 'No driver available';
+          if (nextShift.status === 'claimed') driverText = `Claimed by ${nextShift.claimed_by === 'austin' ? 'Austin' : 'Karey'}`;
+          else if (nextShift.status === 'swap_requested') driverText = `Swap requested by ${nextShift.claimed_by === 'austin' ? 'Austin' : 'Karey'}`;
+          else {
+            const matches = getMatches(nextShift);
+            if (matches.length > 0) driverText = `${matches.join(', ')} available`;
+          }
+
+          return (
+            <div style={{ background: 'var(--color-shift)', color: '#fff', padding: '1.5rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 className="serif" style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Up Next: Travis Shift</h3>
+                <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {nextShift.startTime}</p>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 500 }}>
+                {driverText}
+              </div>
+            </div>
+          );
+        })()}
+      
         <Calendar
           localizer={localizer}
           events={mappedEvents}
@@ -249,8 +311,8 @@ export default function CalendarPage() {
         />
       </main>
 
-      <footer style={{ display: 'flex', gap: '2rem', paddingTop: '1rem', borderTop: '1px solid #eee', color: '#666', fontSize: '0.9rem' }}>
-        <span className="serif" style={{ fontStyle: 'italic', color: '#aaa' }}>Legend:</span>
+      <footer style={{ display: 'flex', gap: '2rem', paddingTop: '1rem', borderTop: 'var(--border-light)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+        <span className="serif" style={{ fontStyle: 'italic', opacity: 0.7 }}>Legend:</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--color-shift)' }}></div>
           <span>Travis Shift</span>
@@ -270,19 +332,19 @@ export default function CalendarPage() {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2.5rem' }}>
               <div>
-                <h2 className="serif" style={{ margin: 0, fontSize: '1.8rem', color: '#111' }}>
+                <h2 className="serif" style={{ margin: 0, fontSize: '1.8rem', color: 'var(--black)' }}>
                   {selectedEventId ? 'Edit Schedule' : 'New Schedule'}
                 </h2>
-                <p style={{ margin: '0.5rem 0 0 0', color: '#888', fontSize: '0.95rem' }}>Update availability block</p>
+                <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.95rem' }}>Update availability block</p>
               </div>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888' }} onClick={() => setIsModalOpen(false)}>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setIsModalOpen(false)}>
                 <X size={24} strokeWidth={1.5} />
               </button>
             </div>
             
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: '#888' }}>Person</label>
+                <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Person</label>
                 <select className="editorial-input" value={formType} onChange={e => setFormType(e.target.value as any)} disabled={!isAdmin}>
                   <option value="shift">Travis (Needs Ride)</option>
                   <option value="austin">Austin (Unavailable)</option>
@@ -291,7 +353,7 @@ export default function CalendarPage() {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: '#888' }}>Days of Week</label>
+                <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Days of Week</label>
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
                   {weekDays.map(day => {
                     const isSelected = formDates.includes(day.dateStr);
@@ -315,17 +377,48 @@ export default function CalendarPage() {
               </div>
               
               <div style={{ display: 'flex', gap: '2rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-                  <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: '#888' }}>Start Time</label>
-                  <input className="editorial-input" type="time" required value={formStartTime} onChange={e => setFormStartTime(e.target.value)} />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-                  <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: '#888' }}>End Time</label>
-                  <input className="editorial-input" type="time" required value={formEndTime} onChange={e => setFormEndTime(e.target.value)} />
-                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--black)' }}>
+                  <input type="checkbox" checked={formIsAllDay} onChange={e => setFormIsAllDay(e.target.checked)} />
+                  All Day
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--black)' }}>
+                  <input type="checkbox" checked={formIsRecurring} onChange={e => setFormIsRecurring(e.target.checked)} />
+                  Repeat Weekly
+                </label>
               </div>
+
+              {!formIsAllDay && (
+                <div style={{ display: 'flex', gap: '2rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                    <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Start Time</label>
+                    <input className="editorial-input" type="time" required value={formStartTime} onChange={e => setFormStartTime(e.target.value)} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                    <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>End Time</label>
+                    <input className="editorial-input" type="time" required value={formEndTime} onChange={e => setFormEndTime(e.target.value)} />
+                  </div>
+                </div>
+              )}
               
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #eee' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: 'var(--border-light)' }}>
+                {selectedEventId && formType === 'shift' && !isAdmin && (isAustin || isKarey) && (() => {
+                   const ev = events.find(e => e.id === selectedEventId);
+                   if (ev?.status === 'open' || ev?.status === 'swap_requested') {
+                     return (
+                       <button type="button" onClick={() => handleClaim('claimed')} className="editorial-btn" style={{ marginRight: 'auto', background: 'var(--color-austin)', color: 'white', borderColor: 'transparent' }}>
+                         Claim Shift
+                       </button>
+                     );
+                   } else if (ev?.status === 'claimed' && ev?.claimed_by === (isAustin ? 'austin' : 'karey')) {
+                     return (
+                       <button type="button" onClick={() => handleClaim('swap_requested')} className="editorial-btn" style={{ marginRight: 'auto', background: '#f57c00', color: 'white', borderColor: 'transparent' }}>
+                         Request Swap
+                       </button>
+                     );
+                   }
+                   return null;
+                })()}
+
                 {selectedEventId && (isAdmin || (isAustin && formType === 'austin') || (isKarey && formType === 'karey')) && (
                   <button type="button" onClick={handleDelete} className="editorial-btn" style={{ marginRight: 'auto', color: '#d32f2f', borderColor: 'transparent' }}>
                     <Trash2 size={16} /> Delete

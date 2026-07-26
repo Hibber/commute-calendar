@@ -15,15 +15,15 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { type, date, startTime, endTime, notes = '' } = body;
+    const { type, date, startTime, endTime, notes = '', is_all_day = false, is_recurring = false, claimed_by = null, status = 'open' } = body;
     
     if (!type || !date || !startTime || !endTime) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const { rows } = await sql`
-      INSERT INTO events (type, date, "startTime", "endTime", notes)
-      VALUES (${type}, ${date}, ${startTime}, ${endTime}, ${notes})
+      INSERT INTO events (type, date, "startTime", "endTime", notes, is_all_day, is_recurring, claimed_by, status)
+      VALUES (${type}, ${date}, ${startTime}, ${endTime}, ${notes}, ${is_all_day}, ${is_recurring}, ${claimed_by}, ${status})
       RETURNING *
     `;
     
