@@ -5,7 +5,7 @@ import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { X, CalendarPlus, Trash2 } from 'lucide-react';
-import { SignInButton, SignedIn, SignedOut, UserButton, useUser } from '@clerk/nextjs';
+import { SignInButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const locales = {
@@ -188,12 +188,12 @@ export default function CalendarPage() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <SignedOut>
+          <Show when="signed-out">
             <SignInButton mode="modal">
               <button className="editorial-btn editorial-btn-primary">Sign In</button>
             </SignInButton>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <UserButton afterSignOutUrl="/" />
             <button 
               className="editorial-btn editorial-btn-primary"
@@ -208,7 +208,7 @@ export default function CalendarPage() {
             >
               <CalendarPlus size={18} /> Schedule Block
             </button>
-          </SignedIn>
+          </Show>
         </div>
       </header>
       
