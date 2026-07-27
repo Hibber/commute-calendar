@@ -14,24 +14,24 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg-main: #111111; 
+    --bg-main: #1e1e1e; 
     --black: #fcfcfc;
     --text-muted: #aaaaaa;
-    --border-light: 1px solid #333333;
+    --border-light: 1px solid #3a3a3a;
     
     --shadow-soft: 0 20px 40px rgba(0,0,0,0.5);
-    --modal-overlay: rgba(17,17,17,0.85);
+    --modal-overlay: rgba(30,30,30,0.85);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg-main: #111111; 
+  --bg-main: #1e1e1e; 
   --black: #fcfcfc;
   --text-muted: #aaaaaa;
-  --border-light: 1px solid #333333;
+  --border-light: 1px solid #3a3a3a;
   
   --shadow-soft: 0 20px 40px rgba(0,0,0,0.5);
-  --modal-overlay: rgba(17,17,17,0.85);
+  --modal-overlay: rgba(30,30,30,0.85);
 }
 
 body {
