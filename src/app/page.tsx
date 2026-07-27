@@ -2,12 +2,19 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { format, startOfWeek, addDays, subDays } from 'date-fns';
-import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageCircle, Send } from 'lucide-react';
 import { Show, UserButton, useUser, SignIn } from '@clerk/nextjs';
+
+interface Comment {
+  id: number;
+  author_name: string;
+  content: string;
+  created_at: string;
+}
 
 interface EventData {
   id: number;
-  type: 'shift' | 'austin' | 'karey';
+  type: string;
   date: string;
   startTime: string;
   endTime: string;
@@ -16,6 +23,10 @@ interface EventData {
   is_recurring: boolean;
   claimed_by: string | null;
   status: string;
+  claim_type?: 'drive' | 'borrow' | null;
+  declined_by_austin?: boolean;
+  declined_by_karey?: boolean;
+  comments?: Comment[];
 }
 
 export default function CalendarPage() {
@@ -23,12 +34,11 @@ export default function CalendarPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   
-  const [formType, setFormType] = useState<'shift' | 'austin' | 'karey'>('shift');
   const [formDates, setFormDates] = useState<string[]>([]);
   const [formStartTime, setFormStartTime] = useState('09:00');
   const [formEndTime, setFormEndTime] = useState('17:00');
-  const [formIsAllDay, setFormIsAllDay] = useState(false);
-  const [formIsRecurring, setFormIsRecurring] = useState(false);
+  
+  const [newComment, setNewComment] = useState('');
   
   const [isMounted, setIsMounted] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
@@ -39,8 +49,10 @@ export default function CalendarPage() {
   
   const { user } = useUser();
   const isAdmin = user?.publicMetadata?.role === 'admin';
+  const currentUserName = user?.firstName || 'Guest';
   const isAustin = user?.firstName?.toLowerCase() === 'austin' || user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().includes('austin');
   const isKarey = user?.firstName?.toLowerCase() === 'karey' || user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().includes('karey');
+  const driverName = isAustin ? 'Austin' : isKarey ? 'Karey' : 'Admin';
   
   const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor !== undefined;
   const API_BASE = isCapacitor ? 'https://schedule.triddle.dev' : '';
@@ -50,7 +62,8 @@ export default function CalendarPage() {
       const res = await fetch(`${API_BASE}/api/events`);
       const data = await res.json();
       if (data.events) {
-        setEvents(data.events);
+        // Filter out legacy austin/karey blocks just in case
+        setEvents(data.events.filter((e: any) => e.type === 'shift'));
       }
     } catch (e) {
       console.error('Failed to fetch', e);
@@ -95,7 +108,6 @@ export default function CalendarPage() {
 
   if (!isMounted) return null;
 
-  // Generate 7 days for the currently selected week
   const weekDays = [...Array(7)].map((_, i) => {
     const d = addDays(currentWeekStart, i);
     return {
@@ -104,38 +116,12 @@ export default function CalendarPage() {
     };
   });
 
-  const getMatches = (shift: EventData) => {
-    const shiftStart = new Date(`1970-01-01T${shift.startTime}`).getTime();
-    const shiftEnd = new Date(`1970-01-01T${shift.endTime}`).getTime();
-    
-    const austinBlocks = events.filter(e => e.date === shift.date && e.type === 'austin');
-    const isAustinUnavailable = austinBlocks.some(d => {
-      const dStart = new Date(`1970-01-01T${d.startTime}`).getTime();
-      const dEnd = new Date(`1970-01-01T${d.endTime}`).getTime();
-      return dStart < shiftEnd && dEnd > shiftStart;
-    });
-
-    const kareyBlocks = events.filter(e => e.date === shift.date && e.type === 'karey');
-    const isKareyUnavailable = kareyBlocks.some(d => {
-      const dStart = new Date(`1970-01-01T${d.startTime}`).getTime();
-      const dEnd = new Date(`1970-01-01T${d.endTime}`).getTime();
-      return dStart < shiftEnd && dEnd > shiftStart;
-    });
-
-    const matches: string[] = [];
-    if (!isAustinUnavailable) matches.push('Austin');
-    if (!isKareyUnavailable) matches.push('Karey');
-    return matches;
-  };
-
-  const handleSelectEvent = (event: any) => {
+  const handleSelectEvent = (event: EventData) => {
     setSelectedEventId(event.id);
-    setFormType(event.type);
     setFormDates([event.date]);
     setFormStartTime(event.startTime);
     setFormEndTime(event.endTime);
-    setFormIsAllDay(event.is_all_day || false);
-    setFormIsRecurring(event.is_recurring || false);
+    setNewComment('');
     setIsModalOpen(true);
   };
 
@@ -146,57 +132,96 @@ export default function CalendarPage() {
     fetchEvents();
   };
 
-  const handleClaim = async (newStatus: string) => {
+  const handleAction = async (action: 'drive' | 'borrow' | 'decline') => {
     if (!selectedEventId) return;
-    const name = isAustin ? 'austin' : isKarey ? 'karey' : 'admin';
+    
+    let payload: any = {};
+    if (action === 'decline') {
+      if (isAustin) payload.declined_by_austin = true;
+      if (isKarey) payload.declined_by_karey = true;
+    } else {
+      payload = {
+        claimed_by: driverName,
+        claim_type: action,
+        status: 'claimed'
+      };
+    }
+    
     await fetch(`${API_BASE}/api/events/${selectedEventId}`, { 
       method: 'PUT',
-      body: JSON.stringify({ claimed_by: name, status: newStatus }),
+      body: JSON.stringify(payload),
       headers: { 'Content-Type': 'application/json' }
     });
+    
     setIsModalOpen(false);
+    fetchEvents();
+  };
+
+  const handlePostComment = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedEventId || !newComment.trim()) return;
+    
+    await fetch(`${API_BASE}/api/events/${selectedEventId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({
+        author_name: currentUserName,
+        content: newComment.trim()
+      }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    setNewComment('');
     fetchEvents();
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (selectedEventId) {
-      await fetch(`${API_BASE}/api/events/${selectedEventId}`, { method: 'DELETE' });
-    }
-    for (const date of formDates) {
-      const payload = { 
-        type: formType, 
-        date, 
-        startTime: formIsAllDay ? '00:00' : formStartTime, 
-        endTime: formIsAllDay ? '23:59' : formEndTime, 
-        notes: '',
-        is_all_day: formIsAllDay,
-        is_recurring: formIsRecurring
-      };
-      await fetch(`${API_BASE}/api/events`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
+      await fetch(`${API_BASE}/api/events/${selectedEventId}`, { 
+        method: 'PUT',
+        body: JSON.stringify({ 
+          startTime: formStartTime,
+          endTime: formEndTime
+        }),
         headers: { 'Content-Type': 'application/json' }
       });
+    } else {
+      for (const date of formDates) {
+        const payload = { 
+          type: 'shift', 
+          date, 
+          startTime: formStartTime, 
+          endTime: formEndTime
+        };
+        await fetch(`${API_BASE}/api/events`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
     setIsModalOpen(false);
     fetchEvents();
   };
 
-  // Up Next logic
+  const formatTime = (time: string) => {
+    const [h, m] = time.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
+
   const nextShift = events
-    .filter(e => e.type === 'shift' && new Date(`${e.date}T${e.startTime}`).getTime() > new Date().getTime())
+    .filter(e => new Date(`${e.date}T${e.startTime}`).getTime() > new Date().getTime())
     .sort((a, b) => new Date(`${a.date}T${a.startTime}`).getTime() - new Date(`${b.date}T${b.startTime}`).getTime())[0];
 
-  let nextDriverText = 'No driver available';
+  let nextDriverText = 'Needs Coverage';
   if (nextShift) {
-    if (nextShift.status === 'claimed') nextDriverText = `Claimed by ${nextShift.claimed_by === 'austin' ? 'Austin' : 'Karey'}`;
-    else if (nextShift.status === 'swap_requested') nextDriverText = `Swap requested by ${nextShift.claimed_by === 'austin' ? 'Austin' : 'Karey'}`;
-    else {
-      const matches = getMatches(nextShift);
-      if (matches.length > 0) nextDriverText = `${matches.join(', ')} available`;
-    }
+    if (nextShift.status === 'claimed') nextDriverText = `${nextShift.claim_type === 'borrow' ? 'Borrowing car from' : 'Riding with'} ${nextShift.claimed_by}`;
+    else if (nextShift.declined_by_austin && nextShift.declined_by_karey) nextDriverText = `No Coverage Available!`;
   }
+
+  const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
 
   return (
     <>
@@ -214,9 +239,9 @@ export default function CalendarPage() {
         <div className="app-container">
           <header className="app-header">
             <div>
-              <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Calendar</h1>
+              <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Schedule</h1>
               <p style={{ margin: '0.5rem 0 0 0', fontSize: '1.1rem', color: 'var(--text-muted)', fontWeight: 300 }}>
-                Coordinating Travis's schedule with Austin and Karey
+                Coordinate shifts, rides, and vehicles.
               </p>
             </div>
             <div className="header-actions">
@@ -228,36 +253,32 @@ export default function CalendarPage() {
                 {theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? <Sun size={20} /> : <Moon size={20} />}
               </button>
               <UserButton />
-              <button 
-                className="editorial-btn editorial-btn-primary"
-                onClick={() => {
-                  setFormDates([format(new Date(), 'yyyy-MM-dd')]);
-                  setSelectedEventId(null);
-                  if (isAdmin) setFormType('shift');
-                  else if (isAustin) setFormType('austin');
-                  else if (isKarey) setFormType('karey');
-                  setIsModalOpen(true);
-                }}
-              >
-                <CalendarPlus size={18} /> Schedule Block
-              </button>
+              {isAdmin && (
+                <button 
+                  className="editorial-btn editorial-btn-primary"
+                  onClick={() => {
+                    setFormDates([format(new Date(), 'yyyy-MM-dd')]);
+                    setSelectedEventId(null);
+                    setIsModalOpen(true);
+                  }}
+                >
+                  <CalendarPlus size={18} /> Add Shift
+                </button>
+              )}
             </div>
           </header>
           
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3rem' }}>
             {nextShift && (
-              <div className="up-next-widget">
+              <div className="up-next-widget" style={{ background: (nextShift.declined_by_austin && nextShift.declined_by_karey) ? '#d32f2f' : 'var(--color-shift)' }}>
                 <div>
                   <h3 className="serif" style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Up Next: Travis Shift</h3>
-                  <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {nextShift.startTime}</p>
+                  <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {formatTime(nextShift.startTime)}</p>
                   {trafficData && (
                      <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                        <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: trafficData.color }}></span>
                        {trafficData.totalMinutes} mins to Work ({trafficData.trafficCondition})
                      </p>
-                  )}
-                  {isTrafficLoading && (
-                     <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', opacity: 0.7 }}>Checking live traffic...</p>
                   )}
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 500 }}>
@@ -266,7 +287,7 @@ export default function CalendarPage() {
               </div>
             )}
           
-            {/* Modern Feed Calendar */}
+            {/* Modern Feed */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="feed-controls">
                 <button onClick={() => setCurrentWeekStart(subDays(currentWeekStart, 7))} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -289,50 +310,38 @@ export default function CalendarPage() {
                       <h3 className="feed-day-title serif">{day.name}</h3>
                       <div className="feed-events">
                         {eventsForDay.length === 0 ? (
-                          <p className="feed-empty">No shifts or blocks scheduled.</p>
+                          <p className="feed-empty">No shifts scheduled.</p>
                         ) : (
                           eventsForDay.map(ev => {
-                            let title = ev.type === 'shift' ? 'Travis Shift' : ev.type === 'austin' ? 'Austin Unavailable' : 'Karey Unavailable';
-                            let statusText = '';
-
-                            if (ev.type === 'shift') {
-                               if (ev.status === 'claimed') {
-                                 statusText = `Claimed by ${ev.claimed_by === 'austin' ? 'Austin' : 'Karey'}`;
-                               } else if (ev.status === 'swap_requested') {
-                                 statusText = `Swap Requested by ${ev.claimed_by === 'austin' ? 'Austin' : 'Karey'}`;
-                               } else {
-                                 const matches = getMatches(ev);
-                                 if (matches.length > 0) {
-                                   statusText = `${matches.join(', ')} available`;
-                                 } else {
-                                   statusText = `No Driver`;
-                                 }
-                               }
+                            let statusText = 'Needs Coverage';
+                            let statusColor = 'var(--text-muted)';
+                            
+                            if (ev.status === 'claimed') {
+                              statusText = `${ev.claim_type === 'borrow' ? '🔑 Borrowing car from' : '🚗 Riding with'} ${ev.claimed_by}`;
+                              statusColor = '#4caf50';
+                            } else if (ev.declined_by_austin && ev.declined_by_karey) {
+                              statusText = '❌ No Coverage';
+                              statusColor = '#d32f2f';
                             }
 
-                            // Convert 24h to 12h time format for better readability
-                            const formatTime = (time: string) => {
-                              const [h, m] = time.split(':').map(Number);
-                              const ampm = h >= 12 ? 'PM' : 'AM';
-                              const h12 = h % 12 || 12;
-                              return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
-                            };
-
-                            const timeString = ev.is_all_day 
-                              ? 'All Day' 
-                              : `${formatTime(ev.startTime)} - ${formatTime(ev.endTime)}`;
+                            const timeString = `${formatTime(ev.startTime)} - ${formatTime(ev.endTime)}`;
+                            const commentCount = ev.comments?.length || 0;
 
                             return (
-                              <div key={ev.id} className={`feed-card type-${ev.type}`} onClick={() => handleSelectEvent(ev)}>
-                                <div className="feed-card-indicator"></div>
+                              <div key={ev.id} className="feed-card" style={{ borderLeft: `6px solid ${statusColor}` }} onClick={() => handleSelectEvent(ev)}>
                                 <div className="feed-card-body">
                                   <div>
                                     <div className="feed-card-time">{timeString}</div>
-                                    <div className="feed-card-title">{title}</div>
+                                    <div className="feed-card-title">Travis Shift</div>
                                   </div>
-                                  {statusText && (
-                                    <div className="feed-card-status">{statusText}</div>
-                                  )}
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                                    <div className="feed-card-status" style={{ color: statusColor, background: 'rgba(0,0,0,0.03)' }}>{statusText}</div>
+                                    {commentCount > 0 && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        <MessageCircle size={14} /> {commentCount}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -346,144 +355,170 @@ export default function CalendarPage() {
             </div>
           </main>
 
-          <footer style={{ display: 'flex', gap: '2rem', paddingTop: '1rem', borderTop: 'var(--border-light)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            <span className="serif" style={{ fontStyle: 'italic', opacity: 0.7 }}>Legend:</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--color-shift)' }}></div>
-              <span>Travis Shift</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--color-austin)' }}></div>
-              <span>Austin Block</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--color-karey)' }}></div>
-              <span>Karey Block</span>
-            </div>
-          </footer>
-
           {isModalOpen && (
             <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-              <div className="modal-content" onClick={e => e.stopPropagation()}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2.5rem' }}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                   <div>
                     <h2 className="serif" style={{ margin: 0, fontSize: '1.8rem', color: 'var(--black)' }}>
-                      {selectedEventId ? 'Edit Schedule' : 'New Schedule'}
+                      {selectedEventId ? format(new Date(`${selectedEvent?.date}T00:00:00`), 'EEEE, MMMM d') : 'New Shift'}
                     </h2>
-                    <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.95rem' }}>Update availability block</p>
+                    {selectedEventId && (
+                      <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-muted)', fontSize: '1rem' }}>
+                        {formatTime(selectedEvent?.startTime || '')} - {formatTime(selectedEvent?.endTime || '')}
+                      </p>
+                    )}
                   </div>
                   <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setIsModalOpen(false)}>
                     <X size={24} strokeWidth={1.5} />
                   </button>
                 </div>
                 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Person</label>
-                    <select className="editorial-input" value={formType} onChange={e => setFormType(e.target.value as any)} disabled={!isAdmin}>
-                      <option value="shift">Travis (Needs Ride)</option>
-                      <option value="austin">Austin (Unavailable)</option>
-                      <option value="karey">Karey (Unavailable)</option>
-                    </select>
-                  </div>
+                {/* Scrollable Area for Event Details & Comments */}
+                <div style={{ overflowY: 'auto', flex: 1, paddingRight: '10px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                   
-                  {/* Days of Week (Only show if creating new) */}
-                  {!selectedEventId && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Days of Week</label>
-                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
-                        {[...Array(7)].map((_, i) => {
-                          const d = addDays(currentWeekStart, i);
-                          const dateStr = format(d, 'yyyy-MM-dd');
-                          const dayName = format(d, 'EEEE').substring(0, 1);
-                          const isSelected = formDates.includes(dateStr);
-                          return (
-                            <div 
-                              key={dateStr}
-                              onClick={() => {
-                                if (isSelected && formDates.length > 1) {
-                                  setFormDates(formDates.filter(d => d !== dateStr));
-                                } else if (!isSelected) {
-                                  setFormDates([...formDates, dateStr]);
-                                }
-                              }}
-                              className={`editorial-day-toggle ${isSelected ? 'selected' : ''}`}
+                  {/* ADMIN EDIT FORM */}
+                  {isAdmin && (
+                    <form id="edit-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                      {!selectedEventId && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Days of Week</label>
+                          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                            {[...Array(7)].map((_, i) => {
+                              const d = addDays(currentWeekStart, i);
+                              const dateStr = format(d, 'yyyy-MM-dd');
+                              const dayName = format(d, 'EEEE').substring(0, 1);
+                              const isSelected = formDates.includes(dateStr);
+                              return (
+                                <div 
+                                  key={dateStr}
+                                  onClick={() => {
+                                    if (isSelected && formDates.length > 1) {
+                                      setFormDates(formDates.filter(d => d !== dateStr));
+                                    } else if (!isSelected) {
+                                      setFormDates([...formDates, dateStr]);
+                                    }
+                                  }}
+                                  className={`editorial-day-toggle ${isSelected ? 'selected' : ''}`}
+                                >
+                                  {dayName}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="time-inputs-container" style={{ display: 'flex', gap: '2rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                          <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Start Time</label>
+                          <input className="editorial-input" type="time" required value={formStartTime} onChange={e => setFormStartTime(e.target.value)} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                          <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>End Time</label>
+                          <input className="editorial-input" type="time" required value={formEndTime} onChange={e => setFormEndTime(e.target.value)} />
+                        </div>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* BIDDING ACTIONS FOR DRIVERS */}
+                  {selectedEventId && !isAdmin && (isAustin || isKarey) && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(0,0,0,0.02)', padding: '1.5rem', borderRadius: '12px' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>Coordinate</h4>
+                      
+                      {selectedEvent?.status === 'claimed' ? (
+                        <div style={{ textAlign: 'center', padding: '1rem', background: '#e8f5e9', color: '#2e7d32', borderRadius: '8px', fontWeight: 500 }}>
+                          This shift has been covered by {selectedEvent.claimed_by}.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          <button 
+                            onClick={() => handleAction('drive')}
+                            className="editorial-btn" 
+                            style={{ background: 'var(--black)', color: 'var(--bg-main)', width: '100%' }}
+                          >
+                            🚗 I'll Drive You
+                          </button>
+                          <button 
+                            onClick={() => handleAction('borrow')}
+                            className="editorial-btn" 
+                            style={{ background: 'var(--bg-main)', color: 'var(--black)', width: '100%' }}
+                          >
+                            🔑 Take My Car
+                          </button>
+                          
+                          {((isAustin && !selectedEvent?.declined_by_austin) || (isKarey && !selectedEvent?.declined_by_karey)) ? (
+                            <button 
+                              onClick={() => handleAction('decline')}
+                              className="editorial-btn" 
+                              style={{ background: 'transparent', color: '#d32f2f', border: '1px solid #ffcdd2', width: '100%' }}
                             >
-                              {dayName}
+                              ❌ Can't Do It
+                            </button>
+                          ) : (
+                            <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.5rem' }}>
+                              You declined this shift.
                             </div>
-                          );
-                        })}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
-                  
-                  <div style={{ display: 'flex', gap: '2rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--black)' }}>
-                      <input type="checkbox" checked={formIsAllDay} onChange={e => setFormIsAllDay(e.target.checked)} />
-                      All Day
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--black)' }}>
-                      <input type="checkbox" checked={formIsRecurring} onChange={e => setFormIsRecurring(e.target.checked)} />
-                      Repeat Weekly
-                    </label>
-                  </div>
 
-                  {!formIsAllDay && (
-                    <div className="time-inputs-container" style={{ display: 'flex', gap: '2rem' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-                        <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Start Time</label>
-                        <input className="editorial-input" type="time" required value={formStartTime} onChange={e => setFormStartTime(e.target.value)} />
+                  {/* COMMENTS SECTION */}
+                  {selectedEventId && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>Comments</h4>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {selectedEvent?.comments?.length === 0 ? (
+                          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No comments yet.</p>
+                        ) : (
+                          selectedEvent?.comments?.map(comment => (
+                            <div key={comment.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{comment.author_name}</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{format(new Date(comment.created_at), 'MMM d, h:mm a')}</span>
+                              </div>
+                              <div style={{ background: 'rgba(0,0,0,0.04)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.95rem' }}>
+                                {comment.content}
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-                        <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>End Time</label>
-                        <input className="editorial-input" type="time" required value={formEndTime} onChange={e => setFormEndTime(e.target.value)} />
-                      </div>
+
+                      <form onSubmit={handlePostComment} style={{ display: 'flex', gap: '8px', marginTop: '0.5rem' }}>
+                        <input 
+                          type="text" 
+                          value={newComment}
+                          onChange={e => setNewComment(e.target.value)}
+                          placeholder="Write a comment..." 
+                          className="editorial-input" 
+                          style={{ flex: 1, padding: '10px 14px', background: 'rgba(0,0,0,0.02)', border: 'none', borderRadius: '8px' }}
+                        />
+                        <button type="submit" disabled={!newComment.trim()} style={{ background: 'var(--black)', color: 'var(--bg-main)', border: 'none', borderRadius: '8px', padding: '0 16px', cursor: 'pointer', opacity: newComment.trim() ? 1 : 0.5 }}>
+                          <Send size={18} />
+                        </button>
+                      </form>
                     </div>
                   )}
-                  
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: 'var(--border-light)' }}>
-                    {selectedEventId && formType === 'shift' && !isAdmin && (isAustin || isKarey) && (() => {
-                       const ev = events.find(e => e.id === selectedEventId);
-                       if (ev?.status === 'open' || ev?.status === 'swap_requested') {
-                         
-                         // Swap Approval Logic:
-                         // If it's a swap request and the CURRENT user is NOT the one who requested it, show Accept Swap
-                         if (ev?.status === 'swap_requested' && ev?.claimed_by !== (isAustin ? 'austin' : 'karey')) {
-                            return (
-                              <button type="button" onClick={() => handleClaim('claimed')} className="editorial-btn" style={{ marginRight: 'auto', background: '#4caf50', color: 'white', borderColor: 'transparent' }}>
-                                Accept Swap
-                              </button>
-                            );
-                         }
 
-                         // Normal Claim Logic
-                         if (ev?.status === 'open') {
-                           return (
-                             <button type="button" onClick={() => handleClaim('claimed')} className="editorial-btn" style={{ marginRight: 'auto', background: 'var(--color-austin)', color: 'white', borderColor: 'transparent' }}>
-                               Claim Shift
-                             </button>
-                           );
-                         }
+                </div>
 
-                       } else if (ev?.status === 'claimed' && ev?.claimed_by === (isAustin ? 'austin' : 'karey')) {
-                         return (
-                           <button type="button" onClick={() => handleClaim('swap_requested')} className="editorial-btn" style={{ marginRight: 'auto', background: '#f57c00', color: 'white', borderColor: 'transparent' }}>
-                             Request Swap
-                           </button>
-                         );
-                       }
-                       return null;
-                    })()}
-
-                    {selectedEventId && (isAdmin || (isAustin && formType === 'austin') || (isKarey && formType === 'karey')) && (
-                      <button type="button" onClick={handleDelete} className="editorial-btn" style={{ marginRight: 'auto', color: '#d32f2f', borderColor: 'transparent' }}>
-                        <Trash2 size={16} /> Delete
-                      </button>
-                    )}
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="editorial-btn">Cancel</button>
-                    <button type="submit" className="editorial-btn editorial-btn-primary">Save Block</button>
-                  </div>
-                </form>
+                {/* MODAL FOOTER ACTIONS */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: 'var(--border-light)' }}>
+                  {selectedEventId && isAdmin && (
+                    <button type="button" onClick={handleDelete} className="editorial-btn" style={{ marginRight: 'auto', color: '#d32f2f', borderColor: 'transparent' }}>
+                      <Trash2 size={16} /> Delete Shift
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="editorial-btn">Close</button>
+                  {isAdmin && (
+                    <button type="submit" form="edit-form" className="editorial-btn editorial-btn-primary">Save Shift</button>
+                  )}
+                </div>
               </div>
             </div>
           )}
