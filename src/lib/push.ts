@@ -1,14 +1,22 @@
 import webpush from 'web-push';
 import { sql } from '@vercel/postgres';
 
-webpush.setVapidDetails(
-  'mailto:travis.riddlexx@gmail.com',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string,
-  process.env.VAPID_PRIVATE_KEY as string
-);
-
 export async function sendPushNotification(targetUser: string | 'all', payload: any) {
   try {
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+
+    if (!publicKey || !privateKey) {
+      console.warn('VAPID keys not configured. Skipping push notification.');
+      return;
+    }
+
+    webpush.setVapidDetails(
+      'mailto:travis.riddlexx@gmail.com',
+      publicKey,
+      privateKey
+    );
+
     let subscriptions;
     
     if (targetUser === 'all') {
