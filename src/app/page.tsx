@@ -40,6 +40,7 @@ export default function CalendarPage() {
   
   const [newComment, setNewComment] = useState('');
   const [pendingUpdates, setPendingUpdates] = useState<any[]>([]);
+  const [isPushEnabled, setIsPushEnabled] = useState(false);
   
   const [isMounted, setIsMounted] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
@@ -56,6 +57,22 @@ export default function CalendarPage() {
   const driverName = isAustin ? 'Austin' : isKarey ? 'Karey' : 'Admin';
   
   const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor !== undefined;
+  
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/');
+  
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+  
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+  
   const API_BASE = isCapacitor ? 'https://schedule.triddle.dev' : '';
 
   const fetchEvents = async () => {
@@ -68,6 +85,55 @@ export default function CalendarPage() {
       }
     } catch (e) {
       console.error('Failed to fetch', e);
+    }
+  };
+
+  const checkPushSubscription = async () => {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        const subscription = await registration.pushManager.getSubscription();
+        setIsPushEnabled(!!subscription);
+      }
+    }
+  };
+
+  const togglePushNotifications = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('Push notifications are not supported in this browser.');
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    
+    if (isPushEnabled) {
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await subscription.unsubscribe();
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST',
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      setIsPushEnabled(false);
+    } else {
+      try {
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string)
+        });
+        
+        await fetch('/api/push/subscribe', {
+          method: 'POST',
+          body: JSON.stringify({ subscription, user_name: driverName || 'Travis' }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        setIsPushEnabled(true);
+      } catch (e) {
+        console.error('Failed to subscribe:', e);
+        alert('Could not enable push notifications. Did you grant permission?');
+      }
     }
   };
 
@@ -90,6 +156,7 @@ export default function CalendarPage() {
     setIsMounted(true);
     fetchEvents();
     fetchTraffic();
+    checkPushSubscription();
     
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
     if (savedTheme) {
@@ -245,9 +312,12 @@ export default function CalendarPage() {
           <header className="app-header">
             <div>
               <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Schedule</h1>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '1.1rem', color: 'var(--text-muted)', fontWeight: 300 }}>
-                Coordinate shifts, rides, and vehicles.
-              </p>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '8px' }}>
+                <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>Hello, {driverName || 'Travis'}!</span>
+                <button onClick={togglePushNotifications} style={{ background: 'transparent', border: 'none', color: isPushEnabled ? '#4caf50' : 'var(--text-muted)', fontSize: '0.85rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+                  {isPushEnabled ? '🔔 Push Enabled' : '🔕 Enable Push'}
+                </button>
+              </div>
             </div>
             <div className="header-actions">
               <button 

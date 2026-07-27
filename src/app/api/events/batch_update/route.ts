@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { Resend } from 'resend';
+import { sendPushNotification } from '@/lib/push';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
@@ -64,13 +65,24 @@ export async function PUT(request: Request) {
         html: summaryHtml
       });
 
-      // 2. Send urgent double-decline emails if any occurred
+      // Send standard push notification to Travis
+      await sendPushNotification('Travis', {
+        title: 'Schedule Updated',
+        body: `${driver_name} submitted choices for ${updates.length} shift(s).`
+      });
+
+      // 2. Send urgent double-decline emails/pushes if any occurred
       for (const urgent of urgentEmails) {
         await resend.emails.send({
           from: 'Commute Calendar <onboarding@resend.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: `URGENT: No Coverage for Shift`,
           html: `<p>Both Austin and Karey have declined the shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong>.</p><p>You will need to arrange alternate transportation.</p>`
+        });
+        
+        await sendPushNotification('Travis', {
+          title: '🚨 No Coverage for Shift',
+          body: `Austin and Karey both declined ${urgent.date} at ${urgent.startTime}.`
         });
       }
     } catch (e) {

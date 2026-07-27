@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { Resend } from 'resend';
+import { sendPushNotification } from '@/lib/push';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
@@ -32,6 +33,15 @@ export async function POST(request: Request) {
         to: ['travis.riddlexx@gmail.com'], 
         subject: `Travis published ${events.length} new shifts!`,
         html: `<p>Travis has published <strong>${events.length}</strong> new shifts to the schedule.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a> to submit your availability.</p>`
+      });
+      
+      await sendPushNotification('Austin', {
+        title: 'New Shifts Available',
+        body: `Travis has published ${events.length} new shifts.`
+      });
+      await sendPushNotification('Karey', {
+        title: 'New Shifts Available',
+        body: `Travis has published ${events.length} new shifts.`
       });
     } catch (e) {
       console.error('Failed to send email:', e);
