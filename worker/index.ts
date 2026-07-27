@@ -1,4 +1,7 @@
-declare let self: ServiceWorkerGlobalScope;
+/// <reference lib="webworker" />
+export default null; // Treat this file as a module
+
+declare const self: ServiceWorkerGlobalScope;
 
 self.addEventListener('push', (event) => {
   if (event.data) {
