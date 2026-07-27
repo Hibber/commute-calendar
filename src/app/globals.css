@@ -107,78 +107,6 @@ h1, h2, h3, .serif {
   border-bottom-color: var(--black);
 }
 
-/* React Big Calendar Overrides */
-.rbc-calendar {
-  font-family: inherit;
-}
-.rbc-month-view, .rbc-time-view, .rbc-agenda-view {
-  border: var(--border-light) !important;
-  border-radius: 8px;
-  background: var(--bg-main);
-}
-.rbc-header {
-  border-bottom: var(--border-light) !important;
-  border-left: var(--border-light) !important;
-  padding: 16px 0 !important;
-  font-family: "Georgia", serif;
-  font-style: italic;
-  font-weight: 400 !important;
-  color: var(--text-muted);
-}
-.rbc-header:first-child { border-left: none !important; }
-
-.rbc-day-bg { border-left: var(--border-light) !important; }
-.rbc-day-bg:first-child { border-left: none !important; }
-
-.rbc-timeslot-group { border-bottom: var(--border-light) !important; }
-.rbc-day-slot .rbc-time-slot { border-top: 1px solid var(--bg-main); }
-
-.rbc-time-header-content { border-left: var(--border-light) !important; }
-.rbc-time-content { border-top: var(--border-light) !important; }
-
-/* Events */
-.rbc-event {
-  border: none !important;
-  border-radius: 4px !important;
-  color: white !important;
-  font-weight: 400 !important;
-  font-size: 0.85rem;
-  padding: 4px 8px !important;
-  transition: opacity 0.2s;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
-}
-.rbc-event:hover {
-  opacity: 0.85;
-  z-index: 50 !important;
-}
-.rbc-event-label { display: none; }
-
-/* Toolbar overrides */
-.rbc-toolbar {
-  margin-bottom: 2rem !important;
-}
-.rbc-toolbar button {
-  border: none !important;
-  background: transparent !important;
-  color: var(--text-muted) !important;
-  font-family: inherit !important;
-  font-weight: 400 !important;
-  margin: 0 8px !important;
-  padding: 4px 0 !important;
-  transition: all 0.2s;
-  text-transform: capitalize;
-  font-size: 1rem;
-}
-.rbc-toolbar button:hover {
-  color: var(--black) !important;
-}
-.rbc-toolbar button:active, .rbc-toolbar button.rbc-active {
-  color: var(--black) !important;
-  border-bottom: 1px solid var(--black) !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
-
 /* Form Styles */
 .modal-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -219,7 +147,7 @@ h1, h2, h3, .serif {
 
 /* Layout Overrides */
 .app-container {
-  max-width: 1400px;
+  max-width: 900px;
   margin: 0 auto;
   padding: 4rem 2rem;
   min-height: 100vh;
@@ -246,10 +174,128 @@ h1, h2, h3, .serif {
   background: var(--color-shift);
   color: #fff;
   padding: 1.5rem;
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+/* Modern Feed Styles */
+.feed-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.feed-controls button {
+  background: transparent;
+  border: var(--border-light);
+  color: var(--black);
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.feed-controls button:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+.feed-controls h2 {
+  font-size: 1.4rem;
+  margin: 0;
+  color: var(--black);
+}
+
+.feed-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.feed-day {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.feed-day-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--black);
+  border-bottom: var(--border-light);
+  padding-bottom: 8px;
+}
+
+.feed-events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.feed-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.feed-card {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-main);
+  border: var(--border-light);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.feed-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+}
+
+.feed-card-indicator {
+  width: 8px;
+  flex-shrink: 0;
+}
+
+.feed-card.type-shift .feed-card-indicator { background: var(--color-shift); }
+.feed-card.type-austin .feed-card-indicator { background: var(--color-austin); }
+.feed-card.type-karey .feed-card-indicator { background: var(--color-karey); }
+
+.feed-card-body {
+  padding: 1rem 1.25rem;
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.feed-card-time {
+  font-weight: 500;
+  color: var(--black);
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.feed-card-title {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.feed-card-status {
+  background: rgba(0,0,0,0.05);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: var(--black);
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {
@@ -277,8 +323,10 @@ h1, h2, h3, .serif {
     padding: 1.25rem;
   }
   
-  .rbc-calendar {
-    min-height: 75vh !important;
+  .feed-card-body {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
   }
   
   .modal-content {
@@ -291,7 +339,6 @@ h1, h2, h3, .serif {
     padding: 10px;
   }
   
-  /* Make time inputs stack on mobile instead of sitting side-by-side */
   .time-inputs-container {
     flex-direction: column !important;
     gap: 1rem !important;
