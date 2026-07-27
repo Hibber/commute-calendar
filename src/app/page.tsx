@@ -39,6 +39,7 @@ export default function CalendarPage() {
   const [formEndTime, setFormEndTime] = useState('17:00');
   
   const [newComment, setNewComment] = useState('');
+  const [pendingUpdates, setPendingUpdates] = useState<any[]>([]);
   
   const [isMounted, setIsMounted] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
@@ -132,33 +133,34 @@ export default function CalendarPage() {
     fetchEvents();
   };
 
-  const handleAction = async (action: 'drive' | 'borrow' | 'decline') => {
+  const handleAction = (action: 'drive' | 'borrow' | 'decline') => {
     if (!selectedEventId) return;
     
-    const actionText = action === 'drive' ? "drive" : action === 'borrow' ? "lend your car" : "decline this shift";
-    if (!window.confirm(`Are you sure you want to ${actionText}? This will notify Travis.`)) {
-      return;
-    }
-    
-    let payload: any = {};
+    let payload: any = { id: selectedEventId };
     if (action === 'decline') {
       if (isAustin) payload.declined_by_austin = true;
       if (isKarey) payload.declined_by_karey = true;
     } else {
-      payload = {
-        claimed_by: driverName,
-        claim_type: action,
-        status: 'claimed'
-      };
+      payload.claimed_by = driverName;
+      payload.claim_type = action;
+      payload.status = 'claimed';
     }
     
-    await fetch(`${API_BASE}/api/events/${selectedEventId}`, { 
-      method: 'PUT',
-      body: JSON.stringify(payload),
-      headers: { 'Content-Type': 'application/json' }
+    setPendingUpdates(prev => {
+      const filtered = prev.filter(p => p.id !== selectedEventId);
+      return [...filtered, payload];
     });
     
     setIsModalOpen(false);
+  };
+
+  const submitPendingUpdates = async () => {
+    await fetch(`${API_BASE}/api/events/batch_update`, { 
+      method: 'PUT',
+      body: JSON.stringify({ updates: pendingUpdates, driver_name: driverName }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    setPendingUpdates([]);
     fetchEvents();
   };
 
@@ -191,19 +193,17 @@ export default function CalendarPage() {
         headers: { 'Content-Type': 'application/json' }
       });
     } else {
-      for (const date of formDates) {
-        const payload = { 
-          type: 'shift', 
-          date, 
-          startTime: formStartTime, 
-          endTime: formEndTime
-        };
-        await fetch(`${API_BASE}/api/events`, {
-          method: 'POST',
-          body: JSON.stringify(payload),
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
+      const payloads = formDates.map(date => ({
+        type: 'shift', 
+        date, 
+        startTime: formStartTime, 
+        endTime: formEndTime
+      }));
+      await fetch(`${API_BASE}/api/events/batch_create`, {
+        method: 'POST',
+        body: JSON.stringify({ events: payloads }),
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
     setIsModalOpen(false);
     fetchEvents();
@@ -321,7 +321,18 @@ export default function CalendarPage() {
                             let statusText = 'Needs Coverage';
                             let statusColor = 'var(--text-muted)';
                             
-                            if (ev.status === 'claimed') {
+                            const pending = pendingUpdates.find(p => p.id === ev.id);
+                            
+                            // Determine display based on pending state or actual DB state
+                            if (pending) {
+                              if (pending.claimed_by) {
+                                statusText = `Pending: ${pending.claim_type === 'borrow' ? '🔑 Borrowing car' : '🚗 Riding with you'}`;
+                                statusColor = '#f57c00'; // Orange for pending
+                              } else {
+                                statusText = 'Pending: ❌ Decline';
+                                statusColor = '#f57c00';
+                              }
+                            } else if (ev.status === 'claimed') {
                               statusText = `${ev.claim_type === 'borrow' ? '🔑 Borrowing car from' : '🚗 Riding with'} ${ev.claimed_by}`;
                               statusColor = '#4caf50';
                             } else if (ev.declined_by_austin && ev.declined_by_karey) {
@@ -333,7 +344,7 @@ export default function CalendarPage() {
                             const commentCount = ev.comments?.length || 0;
 
                             return (
-                              <div key={ev.id} className="feed-card" style={{ borderLeft: `6px solid ${statusColor}` }} onClick={() => handleSelectEvent(ev)}>
+                              <div key={ev.id} className="feed-card" style={{ borderLeft: `6px solid ${statusColor}`, opacity: pending ? 0.7 : 1 }} onClick={() => handleSelectEvent(ev)}>
                                 <div className="feed-card-body">
                                   <div>
                                     <div className="feed-card-time">{timeString}</div>
@@ -525,6 +536,14 @@ export default function CalendarPage() {
                   )}
                 </div>
               </div>
+            </div>
+          )}
+          {pendingUpdates.length > 0 && (
+            <div style={{ position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)', background: 'var(--black)', color: 'var(--bg-main)', padding: '1rem 2rem', borderRadius: '30px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: '1.5rem', zIndex: 100 }}>
+              <span style={{ fontWeight: 600 }}>{pendingUpdates.length} shift(s) pending</span>
+              <button className="editorial-btn" style={{ background: 'var(--bg-main)', color: 'var(--black)', borderColor: 'transparent', padding: '8px 20px', borderRadius: '20px' }} onClick={submitPendingUpdates}>
+                Submit Choices
+              </button>
             </div>
           )}
         </div>
