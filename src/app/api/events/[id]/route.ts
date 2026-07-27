@@ -47,7 +47,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           subject: `Shift ${actionText} by ${claimed_by}`,
           html: `<p><strong>${claimed_by}</strong> has ${actionText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
         });
-      } else if (declined_by_austin && declined_by_karey) {
+      } else if (event.declined_by_austin && event.declined_by_karey) {
         await resend.emails.send({
           from: 'Commute Calendar <onboarding@resend.dev>',
           to: ['travis.riddlexx@gmail.com'],
