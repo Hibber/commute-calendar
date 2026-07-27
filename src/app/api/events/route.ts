@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       try {
         await resend.emails.send({
           from: 'Commute Calendar <onboarding@resend.dev>',
-          to: ['travis@triddle.dev'], // Send to Austin/Karey in reality
+          to: ['travis.riddlexx@gmail.com'], // Must be the registered Resend email while in sandbox mode
           subject: 'New Commute Shift Scheduled',
           html: `<p>A new commute shift has been scheduled for <strong>${date}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a>.</p>`
         });
