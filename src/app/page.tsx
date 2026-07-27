@@ -135,6 +135,11 @@ export default function CalendarPage() {
   const handleAction = async (action: 'drive' | 'borrow' | 'decline') => {
     if (!selectedEventId) return;
     
+    const actionText = action === 'drive' ? "drive" : action === 'borrow' ? "lend your car" : "decline this shift";
+    if (!window.confirm(`Are you sure you want to ${actionText}? This will notify Travis.`)) {
+      return;
+    }
+    
     let payload: any = {};
     if (action === 'decline') {
       if (isAustin) payload.declined_by_austin = true;
