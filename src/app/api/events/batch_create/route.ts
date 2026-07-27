@@ -28,12 +28,13 @@ export async function POST(request: Request) {
     }
     
     try {
-      await resend.emails.send({
+      const { error } = await resend.emails.send({
         from: 'Commute Calendar <notifications@triddle.dev>',
         to: ['austin.m.rosner@gmail.com', 'klriddle70@gmail.com'], 
         subject: `Travis published ${events.length} new shifts!`,
         html: `<p>Travis has published <strong>${events.length}</strong> new shifts to the schedule.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a> to submit your availability.</p>`
       });
+      if (error) console.error('Resend API Error:', error);
       
       await sendPushNotification('Austin', {
         title: 'New Shifts Available',

@@ -58,12 +58,13 @@ export async function PUT(request: Request) {
 
     try {
       // 1. Send the batched summary email
-      await resend.emails.send({
+      const { error: summaryError } = await resend.emails.send({
         from: 'Commute Calendar <notifications@triddle.dev>',
         to: ['travis.riddlexx@gmail.com'],
         subject: `Schedule Update: ${driver_name} submitted choices`,
         html: summaryHtml
       });
+      if (summaryError) console.error('Resend API Error (Summary):', summaryError);
 
       // Send standard push notification to Travis
       await sendPushNotification('Travis', {
@@ -73,12 +74,13 @@ export async function PUT(request: Request) {
 
       // 2. Send urgent double-decline emails/pushes if any occurred
       for (const urgent of urgentEmails) {
-        await resend.emails.send({
+        const { error: urgentError } = await resend.emails.send({
           from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: `URGENT: No Coverage for Shift`,
           html: `<p>Both Austin and Karey have declined the shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong>.</p><p>You will need to arrange alternate transportation.</p>`
         });
+        if (urgentError) console.error('Resend API Error (Urgent):', urgentError);
         
         await sendPushNotification('Travis', {
           title: '🚨 No Coverage for Shift',

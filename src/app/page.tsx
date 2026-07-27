@@ -300,7 +300,7 @@ export default function CalendarPage() {
       <Show when="signed-out">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-main)' }}>
           <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
-            <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Calendar</h1>
+            <h1 style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>Commute Calendar</h1>
             <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)' }}>Please sign in to view the schedule.</p>
           </div>
           <SignIn routing="hash" />
@@ -311,7 +311,7 @@ export default function CalendarPage() {
         <div className="app-container">
           <header className="app-header">
             <div>
-              <h1 className="serif" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)' }}>Commute Schedule</h1>
+              <h1 style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>Commute Schedule</h1>
               <div style={{ display: 'flex', gap: '1rem', marginTop: '8px' }}>
                 <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>Hello, {driverName || 'Travis'}!</span>
                 <button onClick={togglePushNotifications} style={{ background: 'transparent', border: 'none', color: isPushEnabled ? '#4caf50' : 'var(--text-muted)', fontSize: '0.85rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
@@ -347,7 +347,7 @@ export default function CalendarPage() {
             {nextShift && (
               <div className="up-next-widget" style={{ background: (nextShift.declined_by_austin && nextShift.declined_by_karey) ? '#d32f2f' : 'var(--color-shift)' }}>
                 <div>
-                  <h3 className="serif" style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Up Next: Travis Shift</h3>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, letterSpacing: '-0.02em' }}>Up Next: Travis Shift</h3>
                   <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {formatTime(nextShift.startTime)}</p>
                   {trafficData && (
                      <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -368,7 +368,7 @@ export default function CalendarPage() {
                 <button onClick={() => setCurrentWeekStart(subDays(currentWeekStart, 7))} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <ChevronLeft size={16} /> Previous
                 </button>
-                <h2 className="serif">Week of {format(currentWeekStart, 'MMMM d')}</h2>
+                <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 600, letterSpacing: '-0.02em' }}>Week of {format(currentWeekStart, 'MMMM d')}</h2>
                 <button onClick={() => setCurrentWeekStart(addDays(currentWeekStart, 7))} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   Next <ChevronRight size={16} />
                 </button>
@@ -382,14 +382,14 @@ export default function CalendarPage() {
 
                   return (
                     <div key={day.dateStr} className="feed-day">
-                      <h3 className="feed-day-title serif">{day.name}</h3>
+                      <h3 className="feed-day-title">{day.name}</h3>
                       <div className="feed-events">
                         {eventsForDay.length === 0 ? (
                           <p className="feed-empty">No shifts scheduled.</p>
                         ) : (
                           eventsForDay.map(ev => {
                             let statusText = 'Needs Coverage';
-                            let statusColor = 'var(--text-muted)';
+                            let statusClass = 'neutral';
                             
                             const pending = pendingUpdates.find(p => p.id === ev.id);
                             
@@ -397,31 +397,38 @@ export default function CalendarPage() {
                             if (pending) {
                               if (pending.claimed_by) {
                                 statusText = `Pending: ${pending.claim_type === 'borrow' ? '🔑 Borrowing car' : '🚗 Riding with you'}`;
-                                statusColor = '#f57c00'; // Orange for pending
+                                statusClass = 'warning';
                               } else {
                                 statusText = 'Pending: ❌ Decline';
-                                statusColor = '#f57c00';
+                                statusClass = 'warning';
                               }
                             } else if (ev.status === 'claimed') {
                               statusText = `${ev.claim_type === 'borrow' ? '🔑 Borrowing car from' : '🚗 Riding with'} ${ev.claimed_by}`;
-                              statusColor = '#4caf50';
+                              statusClass = 'success';
                             } else if (ev.declined_by_austin && ev.declined_by_karey) {
                               statusText = '❌ No Coverage';
-                              statusColor = '#d32f2f';
+                              statusClass = 'error';
+                            } else if (ev.declined_by_austin) {
+                              statusText = 'Needs Coverage (Austin declined)';
+                              statusClass = 'neutral';
+                            } else if (ev.declined_by_karey) {
+                              statusText = 'Needs Coverage (Karey declined)';
+                              statusClass = 'neutral';
                             }
 
                             const timeString = `${formatTime(ev.startTime)} - ${formatTime(ev.endTime)}`;
                             const commentCount = ev.comments?.length || 0;
 
                             return (
-                              <div key={ev.id} className="feed-card" style={{ borderLeft: `6px solid ${statusColor}`, opacity: pending ? 0.7 : 1 }} onClick={() => handleSelectEvent(ev)}>
+                              <div key={ev.id} className="feed-card" style={{ opacity: pending ? 0.7 : 1 }} onClick={() => handleSelectEvent(ev)}>
+                                <div className="feed-card-indicator" style={{ background: `var(--status-${statusClass}-text)` }}></div>
                                 <div className="feed-card-body">
                                   <div>
                                     <div className="feed-card-time">{timeString}</div>
                                     <div className="feed-card-title">Travis Shift</div>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                                    <div className="feed-card-status" style={{ color: statusColor, background: 'rgba(0,0,0,0.03)' }}>{statusText}</div>
+                                    <div className="feed-card-status" style={{ color: `var(--status-${statusClass}-text)`, background: `var(--status-${statusClass}-bg)` }}>{statusText}</div>
                                     {commentCount > 0 && (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                         <MessageCircle size={14} /> {commentCount}
@@ -446,7 +453,7 @@ export default function CalendarPage() {
               <div className="modal-content" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                   <div>
-                    <h2 className="serif" style={{ margin: 0, fontSize: '1.8rem', color: 'var(--black)' }}>
+                    <h2 style={{ margin: 0, fontSize: '1.8rem', color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>
                       {selectedEventId ? format(new Date(`${selectedEvent?.date}T00:00:00`), 'EEEE, MMMM d') : 'New Shift'}
                     </h2>
                     {selectedEventId && (
