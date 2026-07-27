@@ -42,14 +42,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       if (status === 'claimed') {
         const actionText = claim_type === 'borrow' ? 'offered their car for' : 'claimed';
         await resend.emails.send({
-          from: 'Commute Calendar <onboarding@resend.dev>',
+          from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: `Shift ${actionText} by ${claimed_by}`,
           html: `<p><strong>${claimed_by}</strong> has ${actionText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
         });
       } else if (event.declined_by_austin && event.declined_by_karey) {
         await resend.emails.send({
-          from: 'Commute Calendar <onboarding@resend.dev>',
+          from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: `URGENT: No Coverage for Shift`,
           html: `<p>Both Austin and Karey have declined the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>You will need to arrange alternate transportation.</p>`

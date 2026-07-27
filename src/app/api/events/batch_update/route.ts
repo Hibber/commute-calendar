@@ -59,7 +59,7 @@ export async function PUT(request: Request) {
     try {
       // 1. Send the batched summary email
       await resend.emails.send({
-        from: 'Commute Calendar <onboarding@resend.dev>',
+        from: 'Commute Calendar <notifications@triddle.dev>',
         to: ['travis.riddlexx@gmail.com'],
         subject: `Schedule Update: ${driver_name} submitted choices`,
         html: summaryHtml
@@ -74,7 +74,7 @@ export async function PUT(request: Request) {
       // 2. Send urgent double-decline emails/pushes if any occurred
       for (const urgent of urgentEmails) {
         await resend.emails.send({
-          from: 'Commute Calendar <onboarding@resend.dev>',
+          from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: `URGENT: No Coverage for Shift`,
           html: `<p>Both Austin and Karey have declined the shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong>.</p><p>You will need to arrange alternate transportation.</p>`

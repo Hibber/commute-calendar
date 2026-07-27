@@ -29,8 +29,8 @@ export async function POST(request: Request) {
     
     try {
       await resend.emails.send({
-        from: 'Commute Calendar <onboarding@resend.dev>',
-        to: ['travis.riddlexx@gmail.com'], 
+        from: 'Commute Calendar <notifications@triddle.dev>',
+        to: ['austin.m.rosner@gmail.com', 'klriddle70@gmail.com'], 
         subject: `Travis published ${events.length} new shifts!`,
         html: `<p>Travis has published <strong>${events.length}</strong> new shifts to the schedule.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a> to submit your availability.</p>`
       });
