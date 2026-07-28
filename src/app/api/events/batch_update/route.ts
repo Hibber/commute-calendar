@@ -63,12 +63,10 @@ export async function PUT(request: Request) {
 
       // Add to summary email
       let actionStr = '';
-      if (status === 'claimed') {
-        actionStr = claim_type === 'borrow' ? 'offered their car' : 'is driving (you are riding with them)';
-      } else {
+      if (action === 'decline') {
         actionStr = 'declined the shift';
       } else {
-        actionStr = action === 'borrow' ? 'offered their car' : 'claimed the shift (driving)';
+        actionStr = action === 'borrow' ? 'offered their car' : 'is driving (you are riding with them)';
       }
       summaryItems.push(`<li><strong>${event.date}</strong> at <strong>${event.startTime}</strong>: ${actionStr}</li>`);
 
