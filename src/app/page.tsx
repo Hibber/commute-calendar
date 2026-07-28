@@ -309,7 +309,7 @@ export default function CalendarPage() {
             
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2.5rem' }}>
               <SignInButton mode="modal">
-                <button className="editorial-btn" style={{ background: 'var(--black)', color: 'white', padding: '12px 24px', fontSize: '1.1rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>
+                <button className="editorial-btn editorial-btn-primary" style={{ padding: '12px 24px', fontSize: '1.1rem', borderRadius: '8px', cursor: 'pointer' }}>
                   Sign In to Access Schedule
                 </button>
               </SignInButton>
