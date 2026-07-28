@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
+import { requireUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // Home and work addresses, and the live commute time between them, are not
+  // public information.
+  const session = await requireUser();
+  if (!session.ok) return session.response;
+
   try {
     const apiKey = process.env.TOMTOM_API_KEY;
     const homeAddress = process.env.HOME_ADDRESS;

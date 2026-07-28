@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { Resend } from 'resend';
 import { sendPushNotification } from '@/lib/push';
+import { requireAdmin } from '@/lib/auth';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
 export async function POST(request: Request) {
+  const session = await requireAdmin();
+  if (!session.ok) return session.response;
+
   try {
     const { events } = await request.json();
     

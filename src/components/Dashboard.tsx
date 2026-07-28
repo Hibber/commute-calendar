@@ -12,6 +12,13 @@ interface Comment {
   created_at: string;
 }
 
+type ShiftAction = 'drive' | 'borrow' | 'decline';
+
+interface PendingUpdate {
+  id: number;
+  action: ShiftAction;
+}
+
 interface EventData {
   id: number;
   type: string;
@@ -28,6 +35,12 @@ interface EventData {
   comments?: Comment[];
 }
 
+function describeFailure(status: number, attempt: string) {
+  if (status === 401) return 'Your session expired. Please sign in again.';
+  if (status === 403) return `You do not have permission to ${attempt}.`;
+  return `Could not ${attempt}. Please try again.`;
+}
+
 export default function Dashboard() {
   const [events, setEvents] = useState<EventData[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,8 +51,9 @@ export default function Dashboard() {
   const [formEndTime, setFormEndTime] = useState('17:00');
   
   const [newComment, setNewComment] = useState('');
-  const [pendingUpdates, setPendingUpdates] = useState<any[]>([]);
+  const [pendingUpdates, setPendingUpdates] = useState<PendingUpdate[]>([]);
   const [isPushEnabled, setIsPushEnabled] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   
   const [isMounted, setIsMounted] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
@@ -120,9 +134,10 @@ export default function Dashboard() {
           applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string)
         });
         
+        // The subscription is registered against the signed-in user server side.
         await fetch('/api/push/subscribe', {
           method: 'POST',
-          body: JSON.stringify({ subscription, user_name: driverName || 'Travis' }),
+          body: JSON.stringify({ subscription }),
           headers: { 'Content-Type': 'application/json' }
         });
         setIsPushEnabled(true);
@@ -191,65 +206,76 @@ export default function Dashboard() {
 
   const handleDelete = async () => {
     if (!selectedEventId) return;
-    await fetch(`${API_BASE}/api/events/${selectedEventId}`, { method: 'DELETE' });
+    setActionError(null);
+    const res = await fetch(`${API_BASE}/api/events/${selectedEventId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      setActionError(describeFailure(res.status, 'delete this shift'));
+      return;
+    }
     setIsModalOpen(false);
     fetchEvents();
   };
 
-  const handleAction = (action: 'drive' | 'borrow' | 'decline') => {
+  const handleAction = (action: ShiftAction) => {
     if (!selectedEventId) return;
-    
-    let payload: any = { id: selectedEventId };
-    if (action === 'decline') {
-      const currentDeclines = selectedEvent?.declined_by || [];
-      payload.declined_by = Array.from(new Set([...currentDeclines, driverName]));
-    } else {
-      payload.claimed_by = driverName;
-      payload.claim_type = action;
-      payload.status = 'claimed';
-    }
-    
+
+    // Only the verb is sent. The server attributes it to the signed-in user.
     setPendingUpdates(prev => {
       const filtered = prev.filter(p => p.id !== selectedEventId);
-      return [...filtered, payload];
+      return [...filtered, { id: selectedEventId, action }];
     });
-    
+
     setIsModalOpen(false);
   };
 
   const submitPendingUpdates = async () => {
-    await fetch(`${API_BASE}/api/events/batch_update`, { 
-      method: 'PUT',
-      body: JSON.stringify({ updates: pendingUpdates, driver_name: driverName }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    setPendingUpdates([]);
-    fetchEvents();
+    setActionError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/events/batch_update`, {
+        method: 'PUT',
+        body: JSON.stringify({ updates: pendingUpdates }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        setActionError(describeFailure(res.status, 'save your choices'));
+        return;
+      }
+      setPendingUpdates([]);
+      fetchEvents();
+    } catch {
+      setActionError('Could not reach the server. Please try again.');
+    }
   };
 
   const handlePostComment = async (e: FormEvent) => {
     e.preventDefault();
     if (!selectedEventId || !newComment.trim()) return;
     
-    await fetch(`${API_BASE}/api/events/${selectedEventId}/comments`, {
+    // No author is sent; the server records the signed-in user as the author.
+    const res = await fetch(`${API_BASE}/api/events/${selectedEventId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({
-        author_name: driverName,
-        content: newComment.trim()
-      }),
+      body: JSON.stringify({ content: newComment.trim() }),
       headers: { 'Content-Type': 'application/json' }
     });
-    
+
+    if (!res.ok) {
+      setActionError(describeFailure(res.status, 'post your comment'));
+      return;
+    }
+
     setNewComment('');
     fetchEvents();
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setActionError(null);
+
+    let res: Response;
     if (selectedEventId) {
-      await fetch(`${API_BASE}/api/events/${selectedEventId}`, { 
+      res = await fetch(`${API_BASE}/api/events/${selectedEventId}`, {
         method: 'PUT',
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           startTime: formStartTime,
           endTime: formEndTime
         }),
@@ -257,17 +283,23 @@ export default function Dashboard() {
       });
     } else {
       const payloads = formDates.map(date => ({
-        type: 'shift', 
-        date, 
-        startTime: formStartTime, 
+        type: 'shift',
+        date,
+        startTime: formStartTime,
         endTime: formEndTime
       }));
-      await fetch(`${API_BASE}/api/events/batch_create`, {
+      res = await fetch(`${API_BASE}/api/events/batch_create`, {
         method: 'POST',
         body: JSON.stringify({ events: payloads }),
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    if (!res.ok) {
+      setActionError(describeFailure(res.status, 'save this shift'));
+      return;
+    }
+
     setIsModalOpen(false);
     fetchEvents();
   };
@@ -329,6 +361,21 @@ export default function Dashboard() {
           </header>
           
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3rem' }}>
+            {actionError && (
+              <div
+                role="alert"
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '0.9rem 1.2rem', borderRadius: '10px', background: 'var(--status-error-bg)', color: 'var(--status-error-text)', fontSize: '0.95rem' }}
+              >
+                <span>{actionError}</span>
+                <button
+                  onClick={() => setActionError(null)}
+                  aria-label="Dismiss error"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
             {nextShift && (
               <div className="up-next-widget" style={{ background: (nextShift.declined_by && nextShift.declined_by.length >= 2) ? '#d32f2f' : 'var(--color-shift)' }}>
                 <div>
@@ -380,13 +427,12 @@ export default function Dashboard() {
                             
                             // Determine display based on pending state or actual DB state
                             if (pending) {
-                              if (pending.claimed_by) {
-                                statusText = `Pending: ${pending.claim_type === 'borrow' ? '🔑 Borrowing car' : '🚗 Riding with you'}`;
-                                statusClass = 'warning';
-                              } else {
+                              if (pending.action === 'decline') {
                                 statusText = 'Pending: ❌ Decline';
-                                statusClass = 'warning';
+                              } else {
+                                statusText = `Pending: ${pending.action === 'borrow' ? '🔑 Borrowing car' : '🚗 Riding with you'}`;
                               }
+                              statusClass = 'warning';
                             } else if (ev.status === 'claimed') {
                               statusText = `${ev.claim_type === 'borrow' ? '🔑 Borrowing car from' : '🚗 Riding with'} ${ev.claimed_by}`;
                               statusClass = 'success';

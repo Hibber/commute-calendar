@@ -1,52 +1,55 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
 import { Resend } from 'resend';
 import { sendPushNotification } from '@/lib/push';
+import { requireUser } from '@/lib/auth';
+import { applyShiftAction, isShiftAction, parseEventId, type ShiftAction } from '@/lib/events';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
 export async function PUT(request: Request) {
+  const session = await requireUser();
+  if (!session.ok) return session.response;
+  // The submitting driver is taken from the session, never from the request
+  // body, so a caller cannot submit choices on someone else's behalf.
+  const driverName = session.user.displayName;
+
   try {
-    const { updates, driver_name } = await request.json();
-    
+    const { updates } = await request.json();
+
     if (!updates || !Array.isArray(updates) || updates.length === 0) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
+    const parsed: { id: number; action: ShiftAction }[] = [];
+    for (const update of updates) {
+      const id = parseEventId(update?.id);
+      const action = update?.action;
+      if (id === null || !isShiftAction(action)) {
+        return NextResponse.json(
+          { error: "Each update needs an id and an action of 'drive', 'borrow' or 'decline'" },
+          { status: 400 },
+        );
+      }
+      parsed.push({ id, action });
+    }
+
     const updatedEvents = [];
     const urgentEmails = [];
-    
-    let summaryHtml = `<p><strong>${driver_name}</strong> submitted choices for ${updates.length} shift(s):</p><ul>`;
 
-    for (const update of updates) {
-      const { id, claimed_by, status, claim_type, declined_by } = update;
-      
-      let declineArrayStr: string | null = null;
-      if (declined_by !== undefined) {
-        const arr = Array.isArray(declined_by) ? declined_by : [declined_by];
-        declineArrayStr = `{${arr.map(n => `"${n.replace(/"/g, '""')}"`).join(',')}}`;
-      }
-      
-      const { rows } = await sql`
-        UPDATE events 
-        SET 
-          claimed_by = CASE WHEN ${claimed_by === undefined}::boolean THEN claimed_by ELSE ${claimed_by} END, 
-          status = CASE WHEN ${status === undefined}::boolean THEN status ELSE ${status} END,
-          claim_type = CASE WHEN ${claim_type === undefined}::boolean THEN claim_type ELSE ${claim_type} END,
-          declined_by = CASE WHEN ${declineArrayStr === null}::boolean THEN declined_by ELSE ${declineArrayStr}::text[] END
-        WHERE id = ${id} 
-        RETURNING *
-      `;
-      
-      const event = rows[0];
+    let summaryHtml = `<p><strong>${driverName}</strong> submitted choices for ${parsed.length} shift(s):</p><ul>`;
+
+    for (const { id, action } of parsed) {
+      const event = await applyShiftAction(id, action, driverName);
+      if (!event) continue;
+
       updatedEvents.push(event);
 
       // Add to summary email
       let actionStr = '';
-      if (status === 'claimed') {
-        actionStr = claim_type === 'borrow' ? 'offered their car' : 'claimed the shift (driving)';
-      } else {
+      if (action === 'decline') {
         actionStr = 'declined the shift';
+      } else {
+        actionStr = action === 'borrow' ? 'offered their car' : 'claimed the shift (driving)';
       }
       summaryHtml += `<li><strong>${event.date}</strong> at <strong>${event.startTime}</strong>: ${actionStr}</li>`;
 
@@ -67,7 +70,7 @@ export async function PUT(request: Request) {
       const { error: summaryError } = await resend.emails.send({
         from: 'Commute Calendar <notifications@triddle.dev>',
         to: ['travis.riddlexx@gmail.com'],
-        subject: `Schedule Update: ${driver_name} submitted choices`,
+        subject: `Schedule Update: ${driverName} submitted choices`,
         html: summaryHtml
       });
       if (summaryError) console.error('Resend API Error (Summary):', summaryError);
@@ -75,7 +78,7 @@ export async function PUT(request: Request) {
       // Send standard push notification to Travis
       await sendPushNotification('Travis', {
         title: 'Schedule Updated',
-        body: `${driver_name} submitted choices for ${updates.length} shift(s).`
+        body: `${driverName} submitted choices for ${updatedEvents.length} shift(s).`
       });
 
       // 2. Send urgent double-decline emails/pushes if any occurred
@@ -87,7 +90,7 @@ export async function PUT(request: Request) {
           html: `<p>The shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong> has been declined by ${urgent.declined_by.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`
         });
         if (urgentError) console.error('Resend API Error (Urgent):', urgentError);
-        
+
         await sendPushNotification('Travis', {
           title: '🚨 No Coverage for Shift',
           body: `Shift on ${urgent.date} at ${urgent.startTime} was declined by ${urgent.declined_by.join(', ')}.`
