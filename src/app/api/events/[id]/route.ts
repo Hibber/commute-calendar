@@ -67,10 +67,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       );
     }
 
-    const event = await applyShiftAction(id, action, displayName);
-    if (!event) {
+    const result = await applyShiftAction(id, action, displayName);
+    if (result.outcome === 'not_found') {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
+    if (result.outcome === 'conflict') {
+      return NextResponse.json(
+        {
+          error: `This shift was already claimed by ${result.event.claimed_by}.`,
+          claimed_by: result.event.claimed_by,
+        },
+        { status: 409 },
+      );
+    }
+    const event = result.event;
 
     try {
       if (action === 'decline') {

@@ -38,6 +38,7 @@ interface EventData {
 function describeFailure(status: number, attempt: string) {
   if (status === 401) return 'Your session expired. Please sign in again.';
   if (status === 403) return `You do not have permission to ${attempt}.`;
+  if (status === 409) return 'Someone else got there first. Refresh to see the latest.';
   return `Could not ${attempt}. Please try again.`;
 }
 
@@ -240,6 +241,20 @@ export default function Dashboard() {
         setActionError(describeFailure(res.status, 'save your choices'));
         return;
       }
+
+      // Shifts someone else claimed first were left unchanged; say so rather
+      // than letting the refresh quietly discard the choice.
+      const data = await res.json();
+      const conflicts: { date: string; claimed_by: string }[] = data.conflicts || [];
+      if (conflicts.length > 0) {
+        const detail = conflicts
+          .map(c => `${format(new Date(`${c.date}T00:00:00`), 'MMM d')} (${c.claimed_by})`)
+          .join(', ');
+        setActionError(
+          `${conflicts.length} shift(s) were already claimed by someone else and were not changed: ${detail}.`
+        );
+      }
+
       setPendingUpdates([]);
       fetchEvents();
     } catch {

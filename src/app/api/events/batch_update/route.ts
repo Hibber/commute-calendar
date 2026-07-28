@@ -35,13 +35,28 @@ export async function PUT(request: Request) {
 
     const updatedEvents = [];
     const urgentEmails = [];
+    // Shifts another driver claimed first. The rest of the batch still applies;
+    // these are reported back so the submitter learns what did not take.
+    const conflicts: { id: number; date: string; startTime: string; claimed_by: string }[] = [];
 
-    let summaryHtml = `<p><strong>${driverName}</strong> submitted choices for ${parsed.length} shift(s):</p><ul>`;
+    const summaryItems: string[] = [];
 
     for (const { id, action } of parsed) {
-      const event = await applyShiftAction(id, action, driverName);
-      if (!event) continue;
+      const result = await applyShiftAction(id, action, driverName);
 
+      if (result.outcome === 'not_found') continue;
+
+      if (result.outcome === 'conflict') {
+        conflicts.push({
+          id,
+          date: result.event.date,
+          startTime: result.event.startTime,
+          claimed_by: result.event.claimed_by,
+        });
+        continue;
+      }
+
+      const event = result.event;
       updatedEvents.push(event);
 
       // Add to summary email
@@ -51,7 +66,7 @@ export async function PUT(request: Request) {
       } else {
         actionStr = action === 'borrow' ? 'offered their car' : 'claimed the shift (driving)';
       }
-      summaryHtml += `<li><strong>${event.date}</strong> at <strong>${event.startTime}</strong>: ${actionStr}</li>`;
+      summaryItems.push(`<li><strong>${event.date}</strong> at <strong>${event.startTime}</strong>: ${actionStr}</li>`);
 
       // Check for urgent double-decline
       if (event.declined_by && event.declined_by.length >= 2) {
@@ -63,23 +78,32 @@ export async function PUT(request: Request) {
       }
     }
 
-    summaryHtml += '</ul><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for full details.</p>';
+    let summaryHtml = `<p><strong>${driverName}</strong> submitted choices for ${updatedEvents.length} shift(s):</p><ul>`;
+    summaryHtml += summaryItems.join('');
+    summaryHtml += '</ul>';
+    if (conflicts.length > 0) {
+      summaryHtml += `<p>${conflicts.length} shift(s) were already claimed by someone else and were left unchanged.</p>`;
+    }
+    summaryHtml += '<p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for full details.</p>';
 
     try {
-      // 1. Send the batched summary email
-      const { error: summaryError } = await resend.emails.send({
-        from: 'Commute Calendar <notifications@triddle.dev>',
-        to: ['travis.riddlexx@gmail.com'],
-        subject: `Schedule Update: ${driverName} submitted choices`,
-        html: summaryHtml
-      });
-      if (summaryError) console.error('Resend API Error (Summary):', summaryError);
+      // 1. Send the batched summary email. Skipped when the whole batch lost a
+      // race, so nobody is notified about changes that did not happen.
+      if (updatedEvents.length > 0) {
+        const { error: summaryError } = await resend.emails.send({
+          from: 'Commute Calendar <notifications@triddle.dev>',
+          to: ['travis.riddlexx@gmail.com'],
+          subject: `Schedule Update: ${driverName} submitted choices`,
+          html: summaryHtml
+        });
+        if (summaryError) console.error('Resend API Error (Summary):', summaryError);
 
-      // Send standard push notification to Travis
-      await sendPushNotification('Travis', {
-        title: 'Schedule Updated',
-        body: `${driverName} submitted choices for ${updatedEvents.length} shift(s).`
-      });
+        // Send standard push notification to Travis
+        await sendPushNotification('Travis', {
+          title: 'Schedule Updated',
+          body: `${driverName} submitted choices for ${updatedEvents.length} shift(s).`
+        });
+      }
 
       // 2. Send urgent double-decline emails/pushes if any occurred
       for (const urgent of urgentEmails) {
@@ -100,7 +124,7 @@ export async function PUT(request: Request) {
       console.error('Failed to send emails:', e);
     }
 
-    return NextResponse.json({ success: true, events: updatedEvents });
+    return NextResponse.json({ success: true, events: updatedEvents, conflicts });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
