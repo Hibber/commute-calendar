@@ -46,12 +46,19 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     try {
       const event = rows[0];
       if (status === 'claimed') {
-        const actionText = claim_type === 'borrow' ? 'offered their car for' : 'claimed';
+        const subjectText = claim_type === 'borrow' 
+          ? `${claimed_by} offered their car for a shift` 
+          : `Riding with ${claimed_by} for a shift`;
+          
+        const bodyText = claim_type === 'borrow'
+          ? `has offered their car for`
+          : `is driving for`;
+
         await resend.emails.send({
           from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
-          subject: `Shift ${actionText} by ${claimed_by}`,
-          html: `<p><strong>${claimed_by}</strong> has ${actionText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
+          subject: subjectText,
+          html: `<p><strong>${claimed_by}</strong> ${bodyText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
         });
       } else if (event.declined_by && event.declined_by.length >= 2) {
         await resend.emails.send({
