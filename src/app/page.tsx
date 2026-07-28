@@ -1,10 +1,10 @@
-import { SignedIn, SignedOut, SignInButton } from '@clerk/nextjs';
+import { Show, SignInButton } from '@clerk/nextjs';
 import Dashboard from '../components/Dashboard';
 
 export default function HomePage() {
   return (
     <>
-      <SignedOut>
+      <Show when="signed-out">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-main)' }}>
           <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', padding: '4rem 2rem' }}>
             <h1 style={{ fontSize: '3.5rem', margin: 0, color: 'var(--black)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
@@ -28,11 +28,11 @@ export default function HomePage() {
             <a href="/terms" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Terms of Service</a>
           </div>
         </div>
-      </SignedOut>
+      </Show>
 
-      <SignedIn>
+      <Show when="signed-in">
         <Dashboard />
-      </SignedIn>
+      </Show>
     </>
   );
 }
