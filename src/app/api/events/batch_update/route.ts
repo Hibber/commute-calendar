@@ -38,6 +38,8 @@ export async function PUT(request: Request) {
     // Shifts another driver claimed first. The rest of the batch still applies;
     // these are reported back so the submitter learns what did not take.
     const conflicts: { id: number; date: string; startTime: string; claimed_by: string }[] = [];
+    // `claimed_by` is what made the claim conflict, so it is set; fall back
+    // rather than surfacing a bare "null" if the row is ever inconsistent.
 
     const summaryItems: string[] = [];
 
@@ -51,7 +53,7 @@ export async function PUT(request: Request) {
           id,
           date: result.event.date,
           startTime: result.event.startTime,
-          claimed_by: result.event.claimed_by,
+          claimed_by: result.event.claimed_by ?? 'another driver',
         });
         continue;
       }

@@ -32,7 +32,18 @@ export type ShiftActionResult =
   /** Another driver already claimed this shift; `event` is the current row. */
   | { outcome: 'conflict'; event: EventRow };
 
-export type EventRow = Record<string, any>;
+/** The columns of `events` that the API and notifications actually read. */
+export interface EventRow {
+  id: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  claimed_by: string | null;
+  claim_type: ShiftAction | null;
+  status: string;
+  declined_by: string[] | null;
+  [column: string]: unknown;
+}
 
 export async function applyShiftAction(
   id: number,
@@ -40,7 +51,7 @@ export async function applyShiftAction(
   displayName: string,
 ): Promise<ShiftActionResult> {
   if (action === 'decline') {
-    const { rows } = await sql`
+    const { rows } = await sql<EventRow>`
       UPDATE events
       SET declined_by = CASE
         WHEN ${displayName} = ANY(COALESCE(declined_by, '{}'::text[])) THEN declined_by
@@ -56,7 +67,7 @@ export async function applyShiftAction(
   // overwrite each other -- the second one is told it was already taken. A
   // driver may still re-claim a shift that is already theirs, which is how
   // switching between "drive" and "borrow" works.
-  const { rows } = await sql`
+  const { rows } = await sql<EventRow>`
     UPDATE events
     SET claimed_by = ${displayName},
         claim_type = ${action},
@@ -72,7 +83,7 @@ export async function applyShiftAction(
   if (rows[0]) return { outcome: 'applied', event: rows[0] };
 
   // The update matched nothing: either the shift is gone, or someone else holds it.
-  const { rows: existing } = await sql`SELECT * FROM events WHERE id = ${id}`;
+  const { rows: existing } = await sql<EventRow>`SELECT * FROM events WHERE id = ${id}`;
   return existing[0]
     ? { outcome: 'conflict', event: existing[0] }
     : { outcome: 'not_found' };
