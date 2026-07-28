@@ -13,6 +13,13 @@ export default function HomePage() {
             <p style={{ margin: '1.5rem auto', color: 'var(--text-muted)', fontSize: '1.2rem', maxWidth: '600px', lineHeight: 1.6 }}>
               An internal tool designed to effortlessly coordinate carpool schedules, manage driver availability blocks, and ensure seamless transportation coverage for our team.
             </p>
+
+            <div style={{ margin: '2rem auto', padding: '1.5rem', background: 'rgba(0,0,0,0.02)', borderRadius: '12px', border: 'var(--border-light)', maxWidth: '700px', textAlign: 'left' }}>
+              <h2 style={{ fontSize: '1.1rem', marginTop: 0, marginBottom: '0.5rem', color: 'var(--black)' }}>How we use your data</h2>
+              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.5 }}>
+                Commute Calendar uses Google Sign-In to securely authenticate you. We only request your basic profile information (name and email address) to create your account, identify you to your carpool group, and send scheduling notifications. We do not access your Google Calendar, Contacts, or any other sensitive data.
+              </p>
+            </div>
             
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2.5rem' }}>
               <SignInButton mode="modal">
