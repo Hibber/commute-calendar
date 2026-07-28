@@ -17,7 +17,7 @@ export default function HomePage() {
             <div style={{ margin: '2rem auto', padding: '1.5rem', background: 'rgba(0,0,0,0.02)', borderRadius: '12px', border: 'var(--border-light)', maxWidth: '700px', textAlign: 'left' }}>
               <h2 style={{ fontSize: '1.1rem', marginTop: 0, marginBottom: '0.5rem', color: 'var(--black)' }}>How we use your data</h2>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.5 }}>
-                Commute Calendar uses Google Sign-In to securely authenticate you. We only request your basic profile information (name and email address) to create your account, identify you to your carpool group, and send scheduling notifications. We do not access your Google Calendar, Contacts, or any other sensitive data.
+                Commute Calendar allows you to sign in with Google to securely authenticate you. We only request your basic profile information (name and email address) to create your account, identify you to your carpool group, and send scheduling notifications. We do not access your calendar, contacts, or any other sensitive data.
               </p>
             </div>
             
