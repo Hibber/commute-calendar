@@ -22,7 +22,7 @@ export default function HomePage() {
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2.5rem' }}>
-              <SignInButton mode="modal">
+              <SignInButton fallbackRedirectUrl="/">
                 <button className="editorial-btn editorial-btn-primary" style={{ padding: '12px 24px', fontSize: '1.1rem', borderRadius: '8px', cursor: 'pointer' }}>
                   Sign In to Access Schedule
                 </button>
