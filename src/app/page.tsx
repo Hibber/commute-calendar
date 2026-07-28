@@ -305,6 +305,10 @@ export default function CalendarPage() {
             <p style={{ margin: '1rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Please sign in to view the schedule.</p>
           </div>
           <SignIn routing="hash" />
+          <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', fontSize: '0.85rem' }}>
+            <a href="/privacy" style={{ color: 'var(--text-muted)' }}>Privacy Policy</a>
+            <a href="/terms" style={{ color: 'var(--text-muted)' }}>Terms of Service</a>
+          </div>
         </div>
       </Show>
       
@@ -624,6 +628,10 @@ export default function CalendarPage() {
               </button>
             </div>
           )}
+          <footer style={{ textAlign: 'center', padding: '2rem 0', marginTop: '2rem', display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.85rem' }}>
+            <a href="/privacy" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Privacy Policy</a>
+            <a href="/terms" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Terms of Service</a>
+          </footer>
         </div>
       </Show>
     </>
