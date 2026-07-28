@@ -66,6 +66,7 @@ export default function Dashboard() {
   const { user } = useUser();
   const isAdmin = user?.publicMetadata?.role === 'admin';
   const driverName = user?.firstName || user?.username || 'Guest';
+  const userGroup = (user?.publicMetadata?.group as string) || 'members';
   
   const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor !== undefined;
   
@@ -574,14 +575,14 @@ export default function Dashboard() {
                             className="editorial-btn" 
                             style={{ background: 'var(--black)', color: 'var(--bg-main)', width: '100%' }}
                           >
-                            🚗 I'll Drive You
+                            {userGroup === 'members' ? `🚗 Riding with ${driverName}` : `🚗 I'll Drive You`}
                           </button>
                           <button 
                             onClick={() => handleAction('borrow')}
                             className="editorial-btn" 
                             style={{ background: 'var(--bg-main)', color: 'var(--black)', width: '100%' }}
                           >
-                            🔑 Take My Car
+                            {userGroup === 'members' ? `🔑 ${driverName} has offered their car` : `🔑 Take My Car`}
                           </button>
                           
                           {(!selectedEvent?.declined_by?.includes(driverName)) ? (

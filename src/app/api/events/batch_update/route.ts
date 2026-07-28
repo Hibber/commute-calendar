@@ -63,7 +63,9 @@ export async function PUT(request: Request) {
 
       // Add to summary email
       let actionStr = '';
-      if (action === 'decline') {
+      if (status === 'claimed') {
+        actionStr = claim_type === 'borrow' ? 'offered their car' : 'is driving (you are riding with them)';
+      } else {
         actionStr = 'declined the shift';
       } else {
         actionStr = action === 'borrow' ? 'offered their car' : 'claimed the shift (driving)';
