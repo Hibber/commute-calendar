@@ -299,9 +299,10 @@ export default function CalendarPage() {
     <>
       <Show when="signed-out">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-main)' }}>
-          <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem', textAlign: 'center', maxWidth: '400px' }}>
             <h1 style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>Commute Calendar</h1>
-            <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)' }}>Please sign in to view the schedule.</p>
+            <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)' }}>An internal tool to coordinate carpool schedules and driver availability blocks.</p>
+            <p style={{ margin: '1rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Please sign in to view the schedule.</p>
           </div>
           <SignIn routing="hash" />
         </div>
@@ -311,7 +312,7 @@ export default function CalendarPage() {
         <div className="app-container">
           <header className="app-header">
             <div>
-              <h1 style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>Commute Schedule</h1>
+              <h1 style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>Commute Calendar</h1>
               <div style={{ display: 'flex', gap: '1rem', marginTop: '8px' }}>
                 <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>Hello, {driverName || 'Travis'}!</span>
                 <button onClick={togglePushNotifications} style={{ background: 'transparent', border: 'none', color: isPushEnabled ? '#4caf50' : 'var(--text-muted)', fontSize: '0.85rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
