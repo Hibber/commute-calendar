@@ -3,7 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { format, startOfWeek, addDays, subDays } from 'date-fns';
 import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageCircle, Send } from 'lucide-react';
-import { Show, UserButton, useUser, SignIn } from '@clerk/nextjs';
+import { Show, UserButton, useUser, SignInButton } from '@clerk/nextjs';
 
 interface Comment {
   id: number;
@@ -299,15 +299,26 @@ export default function CalendarPage() {
     <>
       <Show when="signed-out">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-main)' }}>
-          <div style={{ marginBottom: '2rem', textAlign: 'center', maxWidth: '400px' }}>
-            <h1 style={{ fontSize: '2.5rem', margin: 0, color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>Commute Calendar</h1>
-            <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)' }}>An internal tool to coordinate carpool schedules and driver availability blocks.</p>
-            <p style={{ margin: '1rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Please sign in to view the schedule.</p>
+          <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', padding: '4rem 2rem' }}>
+            <h1 style={{ fontSize: '3.5rem', margin: 0, color: 'var(--black)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+              Commute Calendar
+            </h1>
+            <p style={{ margin: '1.5rem auto', color: 'var(--text-muted)', fontSize: '1.2rem', maxWidth: '600px', lineHeight: 1.6 }}>
+              An internal tool designed to effortlessly coordinate carpool schedules, manage driver availability blocks, and ensure seamless transportation coverage for our team.
+            </p>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2.5rem' }}>
+              <SignInButton mode="modal">
+                <button className="editorial-btn" style={{ background: 'var(--black)', color: 'white', padding: '12px 24px', fontSize: '1.1rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>
+                  Sign In to Access Schedule
+                </button>
+              </SignInButton>
+            </div>
           </div>
-          <SignIn routing="hash" />
-          <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', fontSize: '0.85rem' }}>
-            <a href="/privacy" style={{ color: 'var(--text-muted)' }}>Privacy Policy</a>
-            <a href="/terms" style={{ color: 'var(--text-muted)' }}>Terms of Service</a>
+          
+          <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'center', gap: '2rem', padding: '2rem', borderTop: '1px solid #eaeaea', width: '100%', fontSize: '0.9rem' }}>
+            <a href="/privacy" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Privacy Policy</a>
+            <a href="/terms" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Terms of Service</a>
           </div>
         </div>
       </Show>
