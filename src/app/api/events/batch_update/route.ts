@@ -19,16 +19,21 @@ export async function PUT(request: Request) {
     let summaryHtml = `<p><strong>${driver_name}</strong> submitted choices for ${updates.length} shift(s):</p><ul>`;
 
     for (const update of updates) {
-      const { id, claimed_by, status, claim_type, declined_by_austin, declined_by_karey } = update;
+      const { id, claimed_by, status, claim_type, declined_by } = update;
+      
+      let declineArrayStr: string | null = null;
+      if (declined_by !== undefined) {
+        const arr = Array.isArray(declined_by) ? declined_by : [declined_by];
+        declineArrayStr = `{${arr.map(n => `"${n.replace(/"/g, '""')}"`).join(',')}}`;
+      }
       
       const { rows } = await sql`
         UPDATE events 
         SET 
-          claimed_by = COALESCE(${claimed_by !== undefined ? claimed_by : null}, claimed_by), 
-          status = COALESCE(${status !== undefined ? status : null}, status),
-          claim_type = COALESCE(${claim_type !== undefined ? claim_type : null}, claim_type),
-          declined_by_austin = COALESCE(${declined_by_austin !== undefined ? declined_by_austin : null}, declined_by_austin),
-          declined_by_karey = COALESCE(${declined_by_karey !== undefined ? declined_by_karey : null}, declined_by_karey)
+          claimed_by = CASE WHEN ${claimed_by === undefined}::boolean THEN claimed_by ELSE ${claimed_by} END, 
+          status = CASE WHEN ${status === undefined}::boolean THEN status ELSE ${status} END,
+          claim_type = CASE WHEN ${claim_type === undefined}::boolean THEN claim_type ELSE ${claim_type} END,
+          declined_by = CASE WHEN ${declineArrayStr === null}::boolean THEN declined_by ELSE ${declineArrayStr}::text[] END
         WHERE id = ${id} 
         RETURNING *
       `;
@@ -46,10 +51,11 @@ export async function PUT(request: Request) {
       summaryHtml += `<li><strong>${event.date}</strong> at <strong>${event.startTime}</strong>: ${actionStr}</li>`;
 
       // Check for urgent double-decline
-      if (event.declined_by_austin && event.declined_by_karey) {
+      if (event.declined_by && event.declined_by.length >= 2) {
         urgentEmails.push({
           date: event.date,
-          startTime: event.startTime
+          startTime: event.startTime,
+          declined_by: event.declined_by
         });
       }
     }
@@ -78,13 +84,13 @@ export async function PUT(request: Request) {
           from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: `URGENT: No Coverage for Shift`,
-          html: `<p>Both Austin and Karey have declined the shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong>.</p><p>You will need to arrange alternate transportation.</p>`
+          html: `<p>The shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong> has been declined by ${urgent.declined_by.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`
         });
         if (urgentError) console.error('Resend API Error (Urgent):', urgentError);
         
         await sendPushNotification('Travis', {
           title: '🚨 No Coverage for Shift',
-          body: `Austin and Karey both declined ${urgent.date} at ${urgent.startTime}.`
+          body: `Shift on ${urgent.date} at ${urgent.startTime} was declined by ${urgent.declined_by.join(', ')}.`
         });
       }
     } catch (e) {

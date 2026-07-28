@@ -24,8 +24,7 @@ interface EventData {
   claimed_by: string | null;
   status: string;
   claim_type?: 'drive' | 'borrow' | null;
-  declined_by_austin?: boolean;
-  declined_by_karey?: boolean;
+  declined_by?: string[];
   comments?: Comment[];
 }
 
@@ -51,10 +50,7 @@ export default function Dashboard() {
   
   const { user } = useUser();
   const isAdmin = user?.publicMetadata?.role === 'admin';
-  const currentUserName = user?.firstName || 'Guest';
-  const isAustin = user?.firstName?.toLowerCase() === 'austin' || user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().includes('austin');
-  const isKarey = user?.firstName?.toLowerCase() === 'karey' || user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().includes('karey');
-  const driverName = isAustin ? 'Austin' : isKarey ? 'Karey' : 'Admin';
+  const driverName = user?.firstName || user?.username || 'Guest';
   
   const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor !== undefined;
   
@@ -205,8 +201,8 @@ export default function Dashboard() {
     
     let payload: any = { id: selectedEventId };
     if (action === 'decline') {
-      if (isAustin) payload.declined_by_austin = true;
-      if (isKarey) payload.declined_by_karey = true;
+      const currentDeclines = selectedEvent?.declined_by || [];
+      payload.declined_by = Array.from(new Set([...currentDeclines, driverName]));
     } else {
       payload.claimed_by = driverName;
       payload.claim_type = action;
@@ -238,7 +234,7 @@ export default function Dashboard() {
     await fetch(`${API_BASE}/api/events/${selectedEventId}/comments`, {
       method: 'POST',
       body: JSON.stringify({
-        author_name: currentUserName,
+        author_name: driverName,
         content: newComment.trim()
       }),
       headers: { 'Content-Type': 'application/json' }
@@ -290,7 +286,7 @@ export default function Dashboard() {
   let nextDriverText = 'Needs Coverage';
   if (nextShift) {
     if (nextShift.status === 'claimed') nextDriverText = `${nextShift.claim_type === 'borrow' ? 'Borrowing car from' : 'Riding with'} ${nextShift.claimed_by}`;
-    else if (nextShift.declined_by_austin && nextShift.declined_by_karey) nextDriverText = `No Coverage Available!`;
+    else if (nextShift.declined_by && nextShift.declined_by.length >= 2) nextDriverText = `No Coverage Available!`;
   }
 
   const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
@@ -334,7 +330,7 @@ export default function Dashboard() {
           
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3rem' }}>
             {nextShift && (
-              <div className="up-next-widget" style={{ background: (nextShift.declined_by_austin && nextShift.declined_by_karey) ? '#d32f2f' : 'var(--color-shift)' }}>
+              <div className="up-next-widget" style={{ background: (nextShift.declined_by && nextShift.declined_by.length >= 2) ? '#d32f2f' : 'var(--color-shift)' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, letterSpacing: '-0.02em' }}>Up Next: Travis Shift</h3>
                   <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {formatTime(nextShift.startTime)}</p>
@@ -394,14 +390,11 @@ export default function Dashboard() {
                             } else if (ev.status === 'claimed') {
                               statusText = `${ev.claim_type === 'borrow' ? '🔑 Borrowing car from' : '🚗 Riding with'} ${ev.claimed_by}`;
                               statusClass = 'success';
-                            } else if (ev.declined_by_austin && ev.declined_by_karey) {
+                            } else if (ev.declined_by && ev.declined_by.length >= 2) {
                               statusText = '❌ No Coverage';
                               statusClass = 'error';
-                            } else if (ev.declined_by_austin) {
-                              statusText = 'Needs Coverage (Austin declined)';
-                              statusClass = 'neutral';
-                            } else if (ev.declined_by_karey) {
-                              statusText = 'Needs Coverage (Karey declined)';
+                            } else if (ev.declined_by && ev.declined_by.length > 0) {
+                              statusText = `Needs Coverage (${ev.declined_by.join(', ')} declined)`;
                               statusClass = 'neutral';
                             }
 
@@ -505,7 +498,7 @@ export default function Dashboard() {
                   )}
 
                   {/* BIDDING ACTIONS FOR DRIVERS */}
-                  {selectedEventId && !isAdmin && (isAustin || isKarey) && (
+                  {selectedEventId && !isAdmin && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(0,0,0,0.02)', padding: '1.5rem', borderRadius: '12px' }}>
                       <h4 style={{ margin: 0, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>Coordinate</h4>
                       
@@ -530,7 +523,7 @@ export default function Dashboard() {
                             🔑 Take My Car
                           </button>
                           
-                          {((isAustin && !selectedEvent?.declined_by_austin) || (isKarey && !selectedEvent?.declined_by_karey)) ? (
+                          {(!selectedEvent?.declined_by?.includes(driverName)) ? (
                             <button 
                               onClick={() => handleAction('decline')}
                               className="editorial-btn" 
