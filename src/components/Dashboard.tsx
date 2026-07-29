@@ -3,7 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { format, startOfWeek, addDays, subDays } from 'date-fns';
 import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageCircle, Send } from 'lucide-react';
-import { UserButton, useUser } from '@clerk/nextjs';
+import { UserButton } from '@clerk/nextjs';
 
 interface Comment {
   id: number;
@@ -42,7 +42,15 @@ function describeFailure(status: number, attempt: string) {
   return `Could not ${attempt}. Please try again.`;
 }
 
-export default function Dashboard() {
+interface DashboardProps {
+  /** Resolved server side -- see the note in `app/page.tsx`. */
+  isAdmin: boolean;
+  /** The exact name the API records this user's actions under. */
+  driverName: string;
+  userGroup: string;
+}
+
+export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardProps) {
   const [events, setEvents] = useState<EventData[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
@@ -56,17 +64,18 @@ export default function Dashboard() {
   const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   
+  // Admin act-as: the roster to file actions for, and the shift that needs a
+  // reassignment confirmation because someone else already holds it.
+  const [drivers, setDrivers] = useState<string[]>([]);
+  const [actAs, setActAs] = useState('');
+  const [pendingOverride, setPendingOverride] = useState<{ action: ShiftAction; claimedBy: string } | null>(null);
+
   const [isMounted, setIsMounted] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   
   const [trafficData, setTrafficData] = useState<any>(null);
   const [isTrafficLoading, setIsTrafficLoading] = useState(false);
-  
-  const { user } = useUser();
-  const isAdmin = user?.publicMetadata?.role === 'admin';
-  const driverName = user?.firstName || user?.username || 'Guest';
-  const userGroup = (user?.publicMetadata?.group as string) || 'members';
   
   const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor !== undefined;
   
@@ -150,6 +159,48 @@ export default function Dashboard() {
     }
   };
 
+  const fetchDrivers = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/users`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDrivers(data.drivers || []);
+    } catch (e) {
+      console.error('Failed to fetch drivers', e);
+    }
+  };
+
+  /**
+   * File a shift action for another driver. Admin only -- the server rejects
+   * `onBehalfOf` from anyone else, and only accepts names on the roster.
+   */
+  const handleActOnBehalf = async (action: ShiftAction, override = false) => {
+    if (!selectedEventId || !actAs) return;
+    setActionError(null);
+
+    const res = await fetch(`${API_BASE}/api/events/${selectedEventId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ action, onBehalfOf: actAs, override }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (res.status === 409) {
+      // Already claimed by someone else. Reassigning is allowed, but only as a
+      // deliberate second step rather than a silent overwrite.
+      const data = await res.json();
+      setPendingOverride({ action, claimedBy: data.claimed_by || 'another driver' });
+      return;
+    }
+    if (!res.ok) {
+      setActionError(describeFailure(res.status, `record that choice for ${actAs}`));
+      return;
+    }
+
+    setPendingOverride(null);
+    setIsModalOpen(false);
+    fetchEvents();
+  };
+
   const fetchTraffic = async () => {
     try {
       setIsTrafficLoading(true);
@@ -170,6 +221,7 @@ export default function Dashboard() {
     fetchEvents();
     fetchTraffic();
     checkPushSubscription();
+    if (isAdmin) fetchDrivers();
     
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
     if (savedTheme) {
@@ -203,6 +255,7 @@ export default function Dashboard() {
     setFormStartTime(event.startTime);
     setFormEndTime(event.endTime);
     setNewComment('');
+    setPendingOverride(null);
     setIsModalOpen(true);
   };
 
@@ -557,6 +610,84 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </form>
+                  )}
+
+                  {/* ADMIN: FILE AN ACTION FOR ANOTHER DRIVER */}
+                  {selectedEventId && isAdmin && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(0,0,0,0.02)', padding: '1.5rem', borderRadius: '12px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>Record for a driver</h4>
+                        <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          Files the choice under their name, as if they had made it themselves.
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <label htmlFor="act-as" style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Driver</label>
+                        <select
+                          id="act-as"
+                          className="editorial-input"
+                          value={actAs}
+                          onChange={e => { setActAs(e.target.value); setPendingOverride(null); }}
+                        >
+                          <option value="">Select a driver…</option>
+                          {drivers.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {selectedEvent?.status === 'claimed' && (
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          Currently claimed by {selectedEvent.claimed_by}.
+                        </p>
+                      )}
+
+                      {pendingOverride ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem', borderRadius: '8px', background: 'var(--status-warning-bg)', color: 'var(--status-warning-text)' }}>
+                          <span style={{ fontSize: '0.9rem' }}>
+                            {pendingOverride.claimedBy} already claimed this shift. Reassign it to {actAs}?
+                          </span>
+                          <div style={{ display: 'flex', gap: '0.75rem' }}>
+                            <button
+                              onClick={() => handleActOnBehalf(pendingOverride.action, true)}
+                              className="editorial-btn"
+                              style={{ background: 'var(--black)', color: 'var(--bg-main)' }}
+                            >
+                              Reassign to {actAs}
+                            </button>
+                            <button onClick={() => setPendingOverride(null)} className="editorial-btn">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', opacity: actAs ? 1 : 0.5 }}>
+                          <button
+                            onClick={() => handleActOnBehalf('drive')}
+                            disabled={!actAs}
+                            className="editorial-btn"
+                            style={{ background: 'var(--black)', color: 'var(--bg-main)', width: '100%' }}
+                          >
+                            🚗 {actAs || 'They'} will drive
+                          </button>
+                          <button
+                            onClick={() => handleActOnBehalf('borrow')}
+                            disabled={!actAs}
+                            className="editorial-btn"
+                            style={{ background: 'var(--bg-main)', color: 'var(--black)', width: '100%' }}
+                          >
+                            🔑 {actAs || 'They'} is offering their car
+                          </button>
+                          <button
+                            onClick={() => handleActOnBehalf('decline')}
+                            disabled={!actAs}
+                            className="editorial-btn"
+                            style={{ background: 'transparent', color: '#d32f2f', border: '1px solid #ffcdd2', width: '100%' }}
+                          >
+                            ❌ {actAs || 'They'} can&apos;t do it
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* BIDDING ACTIONS FOR DRIVERS */}

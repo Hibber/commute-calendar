@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { Resend } from 'resend';
-import { requireAdmin, requireUser } from '@/lib/auth';
+import { listDriverNames, requireAdmin, requireUser } from '@/lib/auth';
 import { applyShiftAction, isShiftAction, parseEventId } from '@/lib/events';
 
 // Vercel build will crash if this is undefined during static analysis, so we provide a fallback
@@ -36,7 +36,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const body = await request.json();
-    const { action, startTime, endTime } = body;
+    const { action, startTime, endTime, onBehalfOf, override } = body;
 
     // Admin path: reschedule the shift.
     if (startTime !== undefined || endTime !== undefined) {
@@ -59,7 +59,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json(rows[0]);
     }
 
-    // Driver path: claim, offer a car, or decline -- always as the signed-in user.
+    // Driver path: claim, offer a car, or decline.
     if (!isShiftAction(action)) {
       return NextResponse.json(
         { error: "action must be one of 'drive', 'borrow', 'decline'" },
@@ -67,7 +67,26 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       );
     }
 
-    const result = await applyShiftAction(id, action, displayName);
+    // Normally the action is attributed to the signed-in user and nobody else.
+    // An admin may file one for another driver, but only for a name on the
+    // roster -- never an arbitrary string from the request body.
+    let actingAs = displayName;
+    const onBehalf = onBehalfOf !== undefined && onBehalfOf !== null && onBehalfOf !== displayName;
+    if (onBehalf) {
+      if (!isAdmin) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const roster = await listDriverNames();
+      if (typeof onBehalfOf !== 'string' || !roster.includes(onBehalfOf)) {
+        return NextResponse.json({ error: 'Unknown driver' }, { status: 400 });
+      }
+      actingAs = onBehalfOf;
+    }
+
+    const result = await applyShiftAction(id, action, actingAs, {
+      // Overriding an existing claim is an admin-only act of reassignment.
+      override: isAdmin && override === true,
+    });
     if (result.outcome === 'not_found') {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
@@ -94,18 +113,24 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         }
       } else {
         const subjectText = action === 'borrow'
-          ? `${displayName} offered their car for a shift`
-          : `Riding with ${displayName} for a shift`;
+          ? `${actingAs} offered their car for a shift`
+          : `Riding with ${actingAs} for a shift`;
 
         const bodyText = action === 'borrow'
           ? 'has offered their car for'
           : 'is driving for';
 
+        // Say so when this was filed by an admin rather than by the driver, so
+        // the notification is not mistaken for the driver's own choice.
+        const attribution = onBehalf
+          ? `<p style="color:#666;font-size:0.9em">Recorded by ${displayName}.</p>`
+          : '';
+
         await resend.emails.send({
           from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: subjectText,
-          html: `<p><strong>${displayName}</strong> ${bodyText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
+          html: `<p><strong>${actingAs}</strong> ${bodyText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p>${attribution}<p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
         });
       }
     } catch (e) {

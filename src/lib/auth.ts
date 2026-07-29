@@ -13,6 +13,12 @@ export interface SessionUser {
    */
   displayName: string;
   isAdmin: boolean;
+  /**
+   * Which permission group this driver belongs to. Only affects how shift
+   * actions are worded in the UI; `members` is the default for anyone who has
+   * not been put in a group.
+   */
+  group: string;
 }
 
 type AuthSuccess = { ok: true; user: SessionUser };
@@ -28,6 +34,22 @@ function displayNameFor(user: User): string {
   );
 }
 
+/**
+ * Whether this user is an admin.
+ *
+ * The role is read from `publicMetadata` first, falling back to
+ * `privateMetadata`. Both are checked because either is a valid place to set it
+ * in the Clerk dashboard, and a role stored in `privateMetadata` is invisible
+ * to the browser -- so the client cannot make this determination itself. That
+ * is why `isAdmin` is resolved here and handed to the UI rather than being
+ * recomputed from `useUser()`.
+ */
+function isAdminUser(user: User): boolean {
+  return (
+    user.publicMetadata?.role === 'admin' || user.privateMetadata?.role === 'admin'
+  );
+}
+
 export async function getSessionUser(): Promise<SessionUser | null> {
   const { userId } = await auth();
   if (!userId) return null;
@@ -40,8 +62,22 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   return {
     userId,
     displayName: displayNameFor(user),
-    isAdmin: user.publicMetadata?.role === 'admin',
+    isAdmin: isAdminUser(user),
+    group: (user.publicMetadata?.group as string) || 'members',
   };
+}
+
+/**
+ * Every known driver, by the name their actions are recorded under.
+ *
+ * This is the allow-list for admin act-as: an admin may only file an action for
+ * a name returned here, so `claimed_by` can never be set to an arbitrary string
+ * supplied by the client.
+ */
+export async function listDriverNames(): Promise<string[]> {
+  const client = await clerkClient();
+  const { data } = await client.users.getUserList({ limit: 100 });
+  return [...new Set(data.map(displayNameFor))].sort((a, b) => a.localeCompare(b));
 }
 
 /** Requires a signed-in user. Every route that touches carpool data uses this. */
