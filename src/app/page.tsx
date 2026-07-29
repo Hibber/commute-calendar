@@ -1,7 +1,33 @@
-import { Show, SignInButton } from '@clerk/nextjs';
+import { Show } from '@clerk/nextjs';
 import Dashboard from '../components/Dashboard';
+import SignInCta from '../components/SignInCta';
 import { getSessionUser } from '@/lib/auth';
 import styles from './first-run.module.css';
+
+/**
+ * How it works, per design direction 2a. The emoji are decorative -- each one
+ * restates its heading -- so they are hidden from assistive technology.
+ */
+const STEPS = [
+  {
+    icon: '🚗',
+    tone: styles.stepRide,
+    title: 'Claim a ride',
+    body: 'Put your name down for any pickup or drop-off.',
+  },
+  {
+    icon: '🔔',
+    tone: styles.stepNotify,
+    title: 'Get a nudge',
+    body: 'A gentle heads-up when something needs covering.',
+  },
+  {
+    icon: '👨‍👩‍👧',
+    tone: styles.stepSync,
+    title: 'Stay in sync',
+    body: 'One calendar the whole crew can see and trust.',
+  },
+];
 
 export default async function HomePage() {
   // Identity and role are resolved server side and handed to the dashboard.
@@ -13,95 +39,47 @@ export default async function HomePage() {
   return (
     <>
       <Show when="signed-out">
-        <div className={styles.wrapper}>
+        <main className={styles.wrapper}>
           <div className={styles.card}>
-            {/* Desktop Brand Panel */}
-            <div className={styles.brandPanel}>
+            <div className={styles.brand}>Carpool Calendar</div>
+
+            <h1 className={styles.title}>Whose turn is it to drive?</h1>
+            <p className={styles.subtitle}>
+              A cozy shared calendar for your family and friends — see who&apos;s driving,
+              claim a ride, and never send another &ldquo;wait, who&apos;s picking up?&rdquo; text.
+            </p>
+
+            <div className={styles.steps}>
+              {STEPS.map((step) => (
+                <div key={step.title} className={styles.step}>
+                  <div className={`${styles.stepIcon} ${step.tone}`} aria-hidden="true">
+                    {step.icon}
+                  </div>
+                  <div className={styles.stepTitle}>{step.title}</div>
+                  <p className={styles.stepBody}>{step.body}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className={styles.trust}>
+              <span className={styles.trustIcon} aria-hidden="true">🔒</span>
               <div>
-                <div className={styles.eyebrow}>Carpool Calendar</div>
-                <h1 className={styles.title}>The family carpool, finally organized.</h1>
-                <p className={styles.subtitle}>
-                  One shared calendar so everyone knows who&apos;s driving, who needs a ride, and what&apos;s still uncovered — no more group texts.
+                <div className={styles.trustTitle}>Just enough to say hi</div>
+                <p className={styles.trustBody}>
+                  We use Google sign-in only to know it&apos;s you — your name and email,
+                  nothing more. No calendar or contacts, ever.
                 </p>
               </div>
-              <div className={styles.steps}>
-                <div className={styles.step}>
-                  <div className={`${styles.stepBadge} ${styles.step1}`}>1</div>
-                  <div className={styles.stepText}>Sign in with your Google account</div>
-                </div>
-                <div className={styles.step}>
-                  <div className={`${styles.stepBadge} ${styles.step2}`}>2</div>
-                  <div className={styles.stepText}>Claim shifts on the shared calendar</div>
-                </div>
-                <div className={styles.step}>
-                  <div className={`${styles.stepBadge} ${styles.step3}`}>3</div>
-                  <div className={styles.stepText}>Get notified when plans change</div>
-                </div>
-              </div>
             </div>
 
-            {/* Right / Main Sign-in Panel */}
-            <div className={styles.signInPanel}>
-              
-              {/* Mobile Top Content (hidden on desktop) */}
-              <div className={`${styles.mobileOnly} ${styles.mobileTopGroup}`}>
-                <img src="/images/carpool_illustration.jpg" alt="Family carpool schedule" className={styles.mobileIllustration} />
-                <div>
-                  <h1 className={styles.mobileTitle}>You&apos;re all set to sign in</h1>
-                  <p className={styles.mobileSubtitle}>
-                    We&apos;ll only use your name and email to add you to the family calendar. Nothing else.
-                  </p>
-                </div>
-              </div>
+            <SignInCta className={styles.cta} />
 
-              {/* Desktop Sign-in Details (hidden on mobile) */}
-              <div className={styles.desktopOnly}>
-                <div>
-                  <h2 className={styles.signInTitle}>Sign in to get started</h2>
-                  <p className={styles.signInSubtitle}>Your group&apos;s schedule is waiting.</p>
-                </div>
-                <div className={styles.trustBox} style={{ marginTop: '28px' }}>
-                  <div className={styles.trustBoxTitle}>How we use your data</div>
-                  <p className={styles.trustBoxText}>
-                    We only request your name and email to identify you to your group and send scheduling notifications. We never access your calendar or contacts.
-                  </p>
-                </div>
-              </div>
-
-              {/* Shared Action Area */}
-              <div className={`${styles.mobileOnly} ${styles.mobileBottomGroup}`}>
-                <div className={styles.dots}>
-                  <div className={styles.dot}></div>
-                  <div className={styles.dot}></div>
-                  <div className={styles.dotActive}></div>
-                </div>
-                <SignInButton fallbackRedirectUrl="/">
-                  <button className={`${styles.primaryBtn} ${styles.primaryBtnMobile}`}>
-                    Continue with Google
-                  </button>
-                </SignInButton>
-                <div className={`${styles.linksRow} ${styles.linksRowMobile}`}>
-                  <a href="/privacy">Privacy</a>
-                  <a href="/terms">Terms</a>
-                </div>
-              </div>
-
-              {/* Desktop Action Area */}
-              <div className={styles.desktopOnly} style={{ marginTop: '28px' }}>
-                <SignInButton fallbackRedirectUrl="/">
-                  <button className={styles.primaryBtn}>
-                    Continue with Google
-                  </button>
-                </SignInButton>
-                <div className={styles.linksRow}>
-                  <a href="/privacy">Privacy Policy</a>
-                  <a href="/terms">Terms of Service</a>
-                </div>
-              </div>
-
-            </div>
+            <nav className={styles.links}>
+              <a href="/privacy">Privacy Policy</a>
+              <a href="/terms">Terms of Service</a>
+            </nav>
           </div>
-        </div>
+        </main>
       </Show>
 
       <Show when="signed-in">
