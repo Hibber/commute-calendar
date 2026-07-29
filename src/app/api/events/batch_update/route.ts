@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
-import { sendPushNotification } from '@/lib/push';
 import { requireUser } from '@/lib/auth';
+import { emailFooter, notify } from '@/lib/notify';
 import { applyShiftAction, isShiftAction, parseEventId, type ShiftAction } from '@/lib/events';
-
-const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
 export async function PUT(request: Request) {
   const session = await requireUser();
@@ -86,44 +83,30 @@ export async function PUT(request: Request) {
     if (conflicts.length > 0) {
       summaryHtml += `<p>${conflicts.length} shift(s) were already claimed by someone else and were left unchanged.</p>`;
     }
-    summaryHtml += '<p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for full details.</p>';
+    summaryHtml += emailFooter();
 
-    try {
-      // 1. Send the batched summary email. Skipped when the whole batch lost a
-      // race, so nobody is notified about changes that did not happen.
-      if (updatedEvents.length > 0) {
-        const { error: summaryError } = await resend.emails.send({
-          from: 'Commute Calendar <notifications@triddle.dev>',
-          to: ['travis.riddlexx@gmail.com'],
-          subject: `Schedule Update: ${driverName} submitted choices`,
-          html: summaryHtml
-        });
-        if (summaryError) console.error('Resend API Error (Summary):', summaryError);
+    // 1. The batched summary goes to whoever manages the schedule. Skipped when
+    // the whole batch lost a race, so nobody hears about changes that did not
+    // happen.
+    if (updatedEvents.length > 0) {
+      await notify('admins', {
+        title: 'Schedule Updated',
+        body: `${driverName} submitted choices for ${updatedEvents.length} shift(s).`,
+        subject: `Schedule Update: ${driverName} submitted choices`,
+        html: summaryHtml,
+        actor: driverName,
+      });
+    }
 
-        // Send standard push notification to Travis
-        await sendPushNotification('Travis', {
-          title: 'Schedule Updated',
-          body: `${driverName} submitted choices for ${updatedEvents.length} shift(s).`
-        });
-      }
-
-      // 2. Send urgent double-decline emails/pushes if any occurred
-      for (const urgent of urgentEmails) {
-        const { error: urgentError } = await resend.emails.send({
-          from: 'Commute Calendar <notifications@triddle.dev>',
-          to: ['travis.riddlexx@gmail.com'],
-          subject: `URGENT: No Coverage for Shift`,
-          html: `<p>The shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong> has been declined by ${urgent.declined_by.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`
-        });
-        if (urgentError) console.error('Resend API Error (Urgent):', urgentError);
-
-        await sendPushNotification('Travis', {
-          title: '🚨 No Coverage for Shift',
-          body: `Shift on ${urgent.date} at ${urgent.startTime} was declined by ${urgent.declined_by.join(', ')}.`
-        });
-      }
-    } catch (e) {
-      console.error('Failed to send emails:', e);
+    // 2. A shift both drivers declined has nobody covering it. That is worth
+    // interrupting the admins about, per shift.
+    for (const urgent of urgentEmails) {
+      await notify('admins', {
+        title: '🚨 No Coverage for Shift',
+        body: `Shift on ${urgent.date} at ${urgent.startTime} was declined by ${urgent.declined_by.join(', ')}.`,
+        subject: 'URGENT: No Coverage for Shift',
+        html: `<p>The shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong> has been declined by ${urgent.declined_by.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`,
+      });
     }
 
     return NextResponse.json({ success: true, events: updatedEvents, conflicts });

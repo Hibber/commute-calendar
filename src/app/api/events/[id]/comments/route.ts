@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { requireUser } from '@/lib/auth';
+import { notify } from '@/lib/notify';
 import { parseEventId } from '@/lib/events';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +28,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       VALUES (${event_id}, ${authorName}, ${content})
       RETURNING *
     `;
+
+    // Push only -- a comment is worth a buzz, not an inbox entry. The date
+    // locates the shift being discussed.
+    const { rows: eventRows } = await sql`
+      SELECT date, "startTime" FROM events WHERE id = ${event_id}
+    `;
+    const shift = eventRows[0];
+    const preview = content.length > 120 ? `${content.slice(0, 117)}...` : content;
+    await notify('all', {
+      title: shift ? `💬 ${authorName} on the ${shift.date} shift` : `💬 ${authorName} commented`,
+      body: preview,
+      actor: authorName,
+    });
 
     return NextResponse.json(rows[0]);
   } catch (error) {

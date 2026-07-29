@@ -1,286 +1,244 @@
+/*
+ * First-run (signed-out) screen -- design direction 2a, "warm editorial".
+ *
+ * Written mobile-first: the single centred column is the base case and the
+ * three-up feature row is the enhancement, because the row is the only part of
+ * the layout that cannot survive a narrow viewport (3x160px + 2x40px gaps needs
+ * 560px of content before padding).
+ *
+ * Colour note: the handoff's accent was #c1592f, which fails WCAG AA both as
+ * text on cream (4.06:1) and behind the button label (4.24:1); its footer link
+ * colour #9c8a7a failed at 3.04:1. The accent is darkened to #b1512b -- same
+ * hue and saturation, ~4% darker -- which clears both uses, and footer links
+ * reuse the existing #7a6a5c body colour. Every pair is >= 4.71:1.
+ */
+
 .wrapper {
+  --cream: #fbf4ea;
+  --card: #fff9f1;
+  --ink: #3a2f28;
+  --muted: #7a6a5c;
+  --accent: #b1512b;
+  --accent-hover: #9c4724;
+  --callout-border: #f0ddc4;
+
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  background-color: #f0eee9; /* background for the outer area if needed, though mobile will fill */
-  padding: 16px;
+  background-color: var(--cream);
+  color: var(--ink);
+  /* Fluid gutter: 24px on a phone, up to the handoff's 72px on desktop. */
+  padding: clamp(2rem, 6vw, 4rem) clamp(1.5rem, 5vw, 4.5rem) clamp(2rem, 5vw, 3.5rem);
   font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .card {
-  display: flex;
   width: 100%;
   max-width: 1180px;
-  min-height: 640px;
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-}
-
-.brandPanel {
-  flex: 1.1;
-  background-color: #111111;
-  color: #fcfcfc;
-  padding: 72px 56px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
+  text-align: center;
 }
 
-.eyebrow {
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #a3a3a3;
-  margin-bottom: 36px;
+.brand {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 1.5rem;
 }
 
 .title {
-  font-size: 2.7rem;
-  margin: 0;
+  /* 2rem on a phone up to the handoff's 3rem. */
+  font-size: clamp(2rem, 1.25rem + 3.4vw, 3rem);
   font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.12;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  max-width: 640px;
+  margin: 0;
+  color: var(--ink);
+  text-wrap: balance;
 }
 
 .subtitle {
-  margin: 20px 0 0;
-  color: #d4d4d4;
-  font-size: 1.05rem;
+  font-size: clamp(1rem, 0.94rem + 0.3vw, 1.15rem);
+  color: var(--muted);
+  max-width: 540px;
   line-height: 1.6;
-  max-width: 420px;
+  margin: 1.125rem 0 0;
+  text-wrap: pretty;
 }
+
+/* --- How it works ------------------------------------------------------- */
 
 .steps {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  margin-top: 48px;
+  align-items: center;
+  gap: 2rem;
+  margin: 2.75rem 0 0.5rem;
+  width: 100%;
 }
 
 .step {
   display: flex;
-  gap: 16px;
-  align-items: center;
-}
-
-.stepBadge {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.stepText {
-  font-size: 0.95rem;
-  color: #e5e5e5;
-}
-
-.step1 { background: #6b7280; color: #fff; }
-.step2 { background: #84cc16; color: #111; }
-.step3 { background: #f97316; color: #fff; }
-
-.signInPanel {
-  flex: 1;
-  background-color: #fcfcfc;
-  padding: 72px 56px;
-  display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 0.625rem;
+  max-width: 20rem;
+}
+
+.stepIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 28px;
+  font-size: 1.4rem;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
-.signInTitle {
-  margin: 0 0 8px;
-  font-size: 1.6rem;
+.stepRide { background: #f3ddc6; }
+.stepNotify { background: #e4ecd6; }
+.stepSync { background: #f6d9d9; }
+
+.stepTitle {
+  font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #111;
+  color: var(--ink);
 }
 
-.signInSubtitle {
+.stepBody {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.5;
   margin: 0;
-  color: #737373;
-  font-size: 0.95rem;
-  line-height: 1.6;
 }
 
-.trustBox {
-  padding: 20px 22px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 12px;
-  border: 1px solid #e5e5e5;
+/* --- Trust callout ------------------------------------------------------ */
+
+.trust {
+  display: flex;
+  gap: 0.875rem;
+  align-items: flex-start;
+  text-align: left;
+  max-width: 600px;
+  margin-top: 2.25rem;
+  background: var(--card);
+  border: 1px solid var(--callout-border);
+  border-radius: 16px;
+  padding: 1.125rem 1.625rem;
 }
 
-.trustBoxTitle {
-  font-size: 0.95rem;
+.trustIcon {
+  font-size: 1.3rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.trustTitle {
+  font-size: 0.98rem;
   font-weight: 600;
-  color: #111;
-  margin-bottom: 6px;
+  color: var(--ink);
+  margin-bottom: 0.125rem;
 }
 
-.trustBoxText {
+.trustBody {
   font-size: 0.88rem;
-  color: #737373;
+  color: var(--muted);
   line-height: 1.55;
   margin: 0;
 }
 
-.primaryBtn {
-  background: #111;
-  color: #fcfcfc;
+/* --- Call to action ----------------------------------------------------- */
+
+.cta {
+  /* Deliberately not a pill -- a softer rounded rect, per the handoff. */
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--card);
   border: none;
-  border-radius: 9999px;
-  padding: 14px 28px;
-  font-size: 1.02rem;
-  font-weight: 500;
+  padding: 15px 34px;
+  margin-top: 2.125rem;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  text-decoration: none;
-  width: 100%;
+  box-shadow: 0 6px 16px rgba(177, 81, 43, 0.25);
+  transition: background-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  /* Comfortable tap target on touch devices. */
+  min-height: 48px;
 }
 
-.primaryBtn:hover {
-  background: #000;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+.cta:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 8px 20px rgba(177, 81, 43, 0.3);
 }
 
-.linksRow {
+.cta:active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 12px rgba(177, 81, 43, 0.25);
+}
+
+/* The codebase had no focus convention to inherit, so one is defined here. */
+.cta:focus-visible,
+.links a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.cta:disabled {
+  cursor: progress;
+  opacity: 0.75;
+  box-shadow: none;
+}
+
+.links {
   display: flex;
-  gap: 20px;
-  font-size: 0.82rem;
-  margin-top: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.375rem;
+  margin-top: 2rem;
+  font-size: 0.85rem;
 }
 
-.linksRow a {
-  color: #737373;
+.links a {
+  color: var(--muted);
   text-decoration: none;
 }
-.linksRow a:hover {
+
+.links a:hover {
   text-decoration: underline;
 }
 
-/* Mobile Specifics (Hidden on desktop) */
-.mobileOnly {
-  display: none;
+/* --- Enhancement: three-up row once there is room ------------------------ */
+
+@media (min-width: 46em) {
+  .steps {
+    flex-direction: row;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 2.5rem;
+  }
+
+  .step {
+    width: 160px;
+    max-width: none;
+  }
 }
 
-/* Desktop Specifics */
-.desktopOnly {
-  display: flex;
-  flex-direction: column;
-}
-
-@media (max-width: 768px) {
-  .wrapper {
-    background-color: #fcfcfc;
-    padding: 0;
-    justify-content: flex-start;
-  }
-  
-  .card {
-    flex-direction: column;
-    box-shadow: none;
-    border: none;
-    border-radius: 0;
-    min-height: auto;
-    flex: 1;
+@media (prefers-reduced-motion: reduce) {
+  .cta {
+    transition: none;
   }
 
-  .brandPanel {
-    display: none;
-  }
-  
-  .signInPanel {
-    padding: 8px 28px 32px;
-    gap: 0;
-    justify-content: space-between;
-    flex: 1;
-  }
-  
-  .desktopOnly { display: none !important; }
-  .mobileOnly { display: flex !important; }
-
-  .mobileTopGroup {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 24px;
-    margin-top: 12px;
-  }
-
-  .mobileIllustration {
-    width: 100%;
-    height: 180px;
-    border-radius: 20px;
-    object-fit: cover;
-  }
-
-  .mobileTitle {
-    font-size: 1.6rem;
-    margin: 0;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: #111;
-    line-height: 1.2;
-  }
-
-  .mobileSubtitle {
-    margin: 14px 0 0;
-    color: #737373;
-    font-size: 0.95rem;
-    line-height: 1.55;
-  }
-
-  .mobileBottomGroup {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    margin-top: 40px;
-  }
-
-  .dots {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #d4d4d4;
-  }
-
-  .dotActive {
-    width: 22px;
-    height: 7px;
-    border-radius: 4px;
-    background: #111;
-  }
-
-  .primaryBtnMobile {
-    padding: 16px;
-  }
-
-  .linksRowMobile {
-    font-size: 0.78rem;
-    gap: 16px;
-    margin-top: 0;
+  .cta:active {
+    transform: none;
   }
 }

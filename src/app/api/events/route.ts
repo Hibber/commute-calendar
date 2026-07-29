@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { Resend } from 'resend';
 import { requireAdmin, requireUser } from '@/lib/auth';
-
-// Vercel build will crash if this is undefined during static analysis, so we provide a fallback
-const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
+import { emailFooter, notify } from '@/lib/notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,16 +56,13 @@ export async function POST(request: Request) {
     `;
 
     if (type === 'shift') {
-      try {
-        await resend.emails.send({
-          from: 'Commute Calendar <notifications@triddle.dev>',
-          to: ['austin.m.rosner@gmail.com', 'klriddle70@gmail.com'],
-          subject: 'New Commute Shift Scheduled',
-          html: `<p>A new commute shift has been scheduled for <strong>${date}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a>.</p>`
-        });
-      } catch (e) {
-        console.error('Failed to send email:', e);
-      }
+      await notify('members', {
+        title: 'New Shift Scheduled',
+        body: `A shift was added on ${date} from ${startTime} to ${endTime}.`,
+        subject: 'New Commute Shift Scheduled',
+        html: `<p>A new commute shift has been scheduled for <strong>${date}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>.</p>${emailFooter()}`,
+        actor: session.user.displayName,
+      });
     }
 
     return NextResponse.json(rows[0]);
