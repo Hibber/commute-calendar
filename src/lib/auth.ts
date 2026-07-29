@@ -113,6 +113,18 @@ export async function listDriverNames(): Promise<string[]> {
   return [...new Set(recipients.map((r) => r.displayName))].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * The drivers a shift can actually be covered by -- everyone who is not an
+ * admin. This is the set coverage is judged against: an admin schedules shifts,
+ * they do not drive them, so their silence should never read as a decline.
+ */
+export async function listCoveringDriverNames(): Promise<string[]> {
+  const recipients = await listRecipients();
+  return [...new Set(recipients.filter((r) => !r.isAdmin).map((r) => r.displayName))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+}
+
 /** Requires a signed-in user. Every route that touches carpool data uses this. */
 export async function requireUser(): Promise<AuthResult> {
   const user = await getSessionUser();

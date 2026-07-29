@@ -75,8 +75,9 @@ export async function GET() {
       color,
       distanceMiles: (summary.lengthInMeters * 0.000621371).toFixed(1)
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Traffic API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

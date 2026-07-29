@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { listCoveringDriverNames, requireUser } from '@/lib/auth';
 import { emailFooter, notify } from '@/lib/notify';
 import { applyShiftAction, isShiftAction, parseEventId, type ShiftAction } from '@/lib/events';
+import { isUncovered } from '@/lib/coverage';
 
 export async function PUT(request: Request) {
   const session = await requireUser();
@@ -40,6 +41,9 @@ export async function PUT(request: Request) {
 
     const summaryItems: string[] = [];
 
+    // Resolved once for the whole batch rather than per shift.
+    const coveringDrivers = await listCoveringDriverNames();
+
     for (const { id, action } of parsed) {
       const result = await applyShiftAction(id, action, driverName);
 
@@ -67,12 +71,12 @@ export async function PUT(request: Request) {
       }
       summaryItems.push(`<li><strong>${event.date}</strong> at <strong>${event.startTime}</strong>: ${actionStr}</li>`);
 
-      // Check for urgent double-decline
-      if (event.declined_by && event.declined_by.length >= 2) {
+      // Nobody left who could drive this one.
+      if (isUncovered(event, coveringDrivers)) {
         urgentEmails.push({
           date: event.date,
           startTime: event.startTime,
-          declined_by: event.declined_by
+          declined_by: event.declined_by ?? []
         });
       }
     }

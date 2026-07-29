@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import React from 'react';
 
 export default function PrivacyPolicy() {
@@ -37,7 +38,7 @@ export default function PrivacyPolicy() {
       </section>
       
       <div style={{ marginTop: '3rem', paddingTop: '1rem', borderTop: '1px solid #eaeaea', textAlign: 'center' }}>
-        <a href="/" style={{ color: '#0070f3', textDecoration: 'none' }}>&larr; Back to Home</a>
+        <Link href="/" style={{ color: '#0070f3', textDecoration: 'none' }}>&larr; Back to Home</Link>
       </div>
     </div>
   );
