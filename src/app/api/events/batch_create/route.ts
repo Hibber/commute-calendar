@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { Resend } from 'resend';
-import { sendPushNotification } from '@/lib/push';
 import { requireAdmin } from '@/lib/auth';
-
-const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
+import { notify } from '@/lib/notify';
 
 export async function POST(request: Request) {
   const session = await requireAdmin();
@@ -31,26 +28,14 @@ export async function POST(request: Request) {
       createdEvents.push(rows[0]);
     }
     
-    try {
-      const { error } = await resend.emails.send({
-        from: 'Commute Calendar <notifications@triddle.dev>',
-        to: ['austin.m.rosner@gmail.com', 'klriddle70@gmail.com'], 
-        subject: `Travis published ${events.length} new shifts!`,
-        html: `<p>Travis has published <strong>${events.length}</strong> new shifts to the schedule.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a> to submit your availability.</p>`
-      });
-      if (error) console.error('Resend API Error:', error);
-      
-      await sendPushNotification('Austin', {
-        title: 'New Shifts Available',
-        body: `Travis has published ${events.length} new shifts.`
-      });
-      await sendPushNotification('Karey', {
-        title: 'New Shifts Available',
-        body: `Travis has published ${events.length} new shifts.`
-      });
-    } catch (e) {
-      console.error('Failed to send email:', e);
-    }
+    const publisher = session.user.displayName;
+    await notify('members', {
+      title: 'New Shifts Available',
+      body: `${publisher} published ${events.length} new shift(s).`,
+      subject: `${publisher} published ${events.length} new shift(s)`,
+      html: `<p><strong>${publisher}</strong> has published <strong>${events.length}</strong> new shift(s) to the schedule.</p><p>Please check the <a href="https://schedule.triddle.dev">Commute Calendar</a> to submit your availability.</p>`,
+      actor: publisher,
+    });
     
     return NextResponse.json({ success: true, events: createdEvents });
   } catch (error) {

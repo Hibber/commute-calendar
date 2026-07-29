@@ -25,7 +25,7 @@ type AuthSuccess = { ok: true; user: SessionUser };
 type AuthFailure = { ok: false; response: NextResponse };
 export type AuthResult = AuthSuccess | AuthFailure;
 
-function displayNameFor(user: User): string {
+export function displayNameFor(user: User): string {
   return (
     user.firstName ||
     user.username ||
@@ -44,10 +44,44 @@ function displayNameFor(user: User): string {
  * is why `isAdmin` is resolved here and handed to the UI rather than being
  * recomputed from `useUser()`.
  */
-function isAdminUser(user: User): boolean {
+export function isAdminUser(user: User): boolean {
   return (
     user.publicMetadata?.role === 'admin' || user.privateMetadata?.role === 'admin'
   );
+}
+
+/**
+ * A person notifications can be delivered to. `displayName` is the key push
+ * subscriptions are stored under; `email` is the Clerk primary address, or
+ * null when the account somehow has none.
+ */
+export interface Recipient {
+  displayName: string;
+  email: string | null;
+  isAdmin: boolean;
+}
+
+/**
+ * Everyone in the carpool, resolved from Clerk at send time.
+ *
+ * This is what replaced the hardcoded names and addresses that used to live in
+ * the API routes: recipients follow whoever is actually signed up, so renaming
+ * someone in Clerk or adding a new member cannot silently detach them from
+ * notifications.
+ */
+export async function listRecipients(): Promise<Recipient[]> {
+  const client = await clerkClient();
+  const { data } = await client.users.getUserList({ limit: 100 });
+  return data.map((user) => {
+    const primary =
+      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId) ??
+      user.emailAddresses[0];
+    return {
+      displayName: displayNameFor(user),
+      email: primary?.emailAddress ?? null,
+      isAdmin: isAdminUser(user),
+    };
+  });
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -75,9 +109,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
  * supplied by the client.
  */
 export async function listDriverNames(): Promise<string[]> {
-  const client = await clerkClient();
-  const { data } = await client.users.getUserList({ limit: 100 });
-  return [...new Set(data.map(displayNameFor))].sort((a, b) => a.localeCompare(b));
+  const recipients = await listRecipients();
+  return [...new Set(recipients.map((r) => r.displayName))].sort((a, b) => a.localeCompare(b));
 }
 
 /** Requires a signed-in user. Every route that touches carpool data uses this. */

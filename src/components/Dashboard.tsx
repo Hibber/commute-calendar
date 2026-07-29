@@ -139,10 +139,15 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
       }
       setIsPushEnabled(false);
     } else {
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidKey) {
+        alert('Push notifications are not configured on the server.');
+        return;
+      }
       try {
         const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string)
+          applicationServerKey: urlBase64ToUint8Array(vapidKey)
         });
         
         // The subscription is registered against the signed-in user server side.
