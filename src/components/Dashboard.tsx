@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useSyncExternalStore, FormEvent } from 'react';
 import { format, startOfWeek, addDays, subDays } from 'date-fns';
 import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageCircle, Send } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
+import { isUncovered } from '@/lib/coverage';
 
 interface Comment {
   id: number;
@@ -13,6 +14,27 @@ interface Comment {
 }
 
 type ShiftAction = 'drive' | 'borrow' | 'decline';
+
+/**
+ * Whether we are past hydration.
+ *
+ * The theme toggle reads `window.matchMedia` during render, which the server
+ * cannot do, so the first client render has to match the server's. This is the
+ * store form rather than a `useState` flipped in an effect: setting state
+ * synchronously inside an effect triggers a second render pass on every mount.
+ */
+const hydratedStore = {
+  subscribe: () => () => {},
+  getSnapshot: () => true,
+  getServerSnapshot: () => false,
+};
+
+/** The fields of the `/api/traffic` response the dashboard actually reads. */
+interface TrafficData {
+  totalMinutes: number;
+  trafficCondition: string;
+  color: string;
+}
 
 interface PendingUpdate {
   id: number;
@@ -35,6 +57,19 @@ interface EventData {
   comments?: Comment[];
 }
 
+/**
+ * What to call a shift in the feed.
+ *
+ * Every shift used to be labelled "Travis Shift" regardless of date, time or
+ * who was driving, which is a leftover from when the app served one household.
+ * A shift's own `notes` are used when set -- the column already existed and was
+ * never surfaced anywhere -- and otherwise it is simply a commute shift.
+ */
+function shiftLabel(event: Pick<EventData, 'notes'>): string {
+  const notes = event.notes?.trim();
+  return notes || 'Commute shift';
+}
+
 function describeFailure(status: number, attempt: string) {
   if (status === 401) return 'Your session expired. Please sign in again.';
   if (status === 403) return `You do not have permission to ${attempt}.`;
@@ -43,14 +78,21 @@ function describeFailure(status: number, attempt: string) {
 }
 
 interface DashboardProps {
-  /** Resolved server side -- see the note in `app/page.tsx`. */
+  /** Resolved server side -- see the note in `app/calendar/page.tsx`. */
   isAdmin: boolean;
   /** The exact name the API records this user's actions under. */
   driverName: string;
   userGroup: string;
+  /** The drivers a shift can be covered by, for the no-coverage check. */
+  coveringDrivers: string[];
 }
 
-export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardProps) {
+export default function Dashboard({
+  isAdmin,
+  driverName,
+  userGroup,
+  coveringDrivers,
+}: DashboardProps) {
   const [events, setEvents] = useState<EventData[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
@@ -70,14 +112,25 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
   const [actAs, setActAs] = useState('');
   const [pendingOverride, setPendingOverride] = useState<{ action: ShiftAction; claimedBy: string } | null>(null);
 
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useSyncExternalStore(
+    hydratedStore.subscribe,
+    hydratedStore.getSnapshot,
+    hydratedStore.getServerSnapshot,
+  );
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  // Read straight from storage rather than syncing it in via an effect. The
+  // server has no localStorage, but the first client render is discarded by the
+  // hydration guard above, so the two never disagree on screen.
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
+    if (typeof window === 'undefined') return 'system';
+    return (localStorage.getItem('theme') as 'light' | 'dark' | null) ?? 'system';
+  });
   
-  const [trafficData, setTrafficData] = useState<any>(null);
-  const [isTrafficLoading, setIsTrafficLoading] = useState(false);
+  const [trafficData, setTrafficData] = useState<TrafficData | null>(null);
   
-  const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor !== undefined;
+  const isCapacitor =
+    typeof window !== 'undefined' &&
+    (window as { Capacitor?: unknown }).Capacitor !== undefined;
   
   function urlBase64ToUint8Array(base64String: string) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -102,7 +155,7 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
       const data = await res.json();
       if (data.events) {
         // Filter out legacy austin/karey blocks just in case
-        setEvents(data.events.filter((e: any) => e.type === 'shift'));
+        setEvents(data.events.filter((e: EventData) => e.type === 'shift'));
       }
     } catch (e) {
       console.error('Failed to fetch', e);
@@ -208,7 +261,6 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
 
   const fetchTraffic = async () => {
     try {
-      setIsTrafficLoading(true);
       const res = await fetch(`${API_BASE}/api/traffic`);
       const data = await res.json();
       if (data.success) {
@@ -216,24 +268,33 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
       }
     } catch (e) {
       console.error('Failed to fetch traffic', e);
-    } finally {
-      setIsTrafficLoading(false);
     }
   };
 
+  // Load everything the dashboard needs once, on mount.
+  //
+  // `set-state-in-effect` is disabled here deliberately. Each of these is async
+  // and only sets state after awaiting a response, so none of them causes the
+  // synchronous cascade the rule is guarding against -- it does not distinguish
+  // an await boundary inside a called function. Satisfying it properly means
+  // moving to Suspense or a fetching library, which is a larger change than the
+  // one this comment sits in; until then the rule would have to be silenced
+  // repo-wide, and being explicit in the one place it fires is preferable.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    setIsMounted(true);
     fetchEvents();
     fetchTraffic();
     checkPushSubscription();
     if (isAdmin) fetchDrivers();
-    
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.setAttribute('data-theme', savedTheme);
-    }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Mirror the chosen theme onto the document for the stylesheet to pick up.
+  useEffect(() => {
+    if (theme !== 'system') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+  }, [theme]);
 
   const toggleTheme = () => {
     const isCurrentlyDark = document.documentElement.getAttribute('data-theme') === 'dark' || 
@@ -392,7 +453,7 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
   let nextDriverText = 'Needs Coverage';
   if (nextShift) {
     if (nextShift.status === 'claimed') nextDriverText = `${nextShift.claim_type === 'borrow' ? 'Borrowing car from' : 'Riding with'} ${nextShift.claimed_by}`;
-    else if (nextShift.declined_by && nextShift.declined_by.length >= 2) nextDriverText = `No Coverage Available!`;
+    else if (isUncovered(nextShift, coveringDrivers)) nextDriverText = `No Coverage Available!`;
   }
 
   const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
@@ -451,9 +512,9 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
               </div>
             )}
             {nextShift && (
-              <div className="up-next-widget" style={{ background: (nextShift.declined_by && nextShift.declined_by.length >= 2) ? '#d32f2f' : 'var(--color-shift)' }}>
+              <div className="up-next-widget" style={{ background: isUncovered(nextShift, coveringDrivers) ? '#d32f2f' : 'var(--color-shift)' }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, letterSpacing: '-0.02em' }}>Up Next: Travis Shift</h3>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, letterSpacing: '-0.02em' }}>Up Next: {shiftLabel(nextShift)}</h3>
                   <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {formatTime(nextShift.startTime)}</p>
                   {trafficData && (
                      <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -510,7 +571,7 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
                             } else if (ev.status === 'claimed') {
                               statusText = `${ev.claim_type === 'borrow' ? '🔑 Borrowing car from' : '🚗 Riding with'} ${ev.claimed_by}`;
                               statusClass = 'success';
-                            } else if (ev.declined_by && ev.declined_by.length >= 2) {
+                            } else if (isUncovered(ev, coveringDrivers)) {
                               statusText = '❌ No Coverage';
                               statusClass = 'error';
                             } else if (ev.declined_by && ev.declined_by.length > 0) {
@@ -527,7 +588,7 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
                                 <div className="feed-card-body">
                                   <div>
                                     <div className="feed-card-time">{timeString}</div>
-                                    <div className="feed-card-title">Travis Shift</div>
+                                    <div className="feed-card-title">{shiftLabel(ev)}</div>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
                                     <div className="feed-card-status" style={{ color: `var(--status-${statusClass}-text)`, background: `var(--status-${statusClass}-bg)` }}>{statusText}</div>
@@ -727,7 +788,7 @@ export default function Dashboard({ isAdmin, driverName, userGroup }: DashboardP
                               className="editorial-btn" 
                               style={{ background: 'transparent', color: '#d32f2f', border: '1px solid #ffcdd2', width: '100%' }}
                             >
-                              ❌ Can't Do It
+                              ❌ Can&apos;t Do It
                             </button>
                           ) : (
                             <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.5rem' }}>

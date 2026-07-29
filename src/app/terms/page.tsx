@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import React from 'react';
 
 export default function TermsOfService() {
@@ -19,13 +20,13 @@ export default function TermsOfService() {
           <li>use the materials for any commercial purpose, or for any public display (commercial or non-commercial);</li>
           <li>attempt to decompile or reverse engineer any software contained on Commute Calendar;</li>
           <li>remove any copyright or other proprietary notations from the materials; or</li>
-          <li>transfer the materials to another person or "mirror" the materials on any other server.</li>
+          <li>transfer the materials to another person or &ldquo;mirror&rdquo; the materials on any other server.</li>
         </ul>
       </section>
 
       <section style={{ marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>3. Disclaimer</h2>
-        <p>The materials on Commute Calendar are provided on an 'as is' basis. Commute Calendar makes no warranties, expressed or implied, and hereby disclaims and negates all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>
+        <p>The materials on Commute Calendar are provided on an &lsquo;as is&rsquo; basis. Commute Calendar makes no warranties, expressed or implied, and hereby disclaims and negates all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>
       </section>
 
       <section style={{ marginTop: '2rem' }}>
@@ -34,7 +35,7 @@ export default function TermsOfService() {
       </section>
 
       <div style={{ marginTop: '3rem', paddingTop: '1rem', borderTop: '1px solid #eaeaea', textAlign: 'center' }}>
-        <a href="/" style={{ color: '#0070f3', textDecoration: 'none' }}>&larr; Back to Home</a>
+        <Link href="/" style={{ color: '#0070f3', textDecoration: 'none' }}>&larr; Back to Home</Link>
       </div>
     </div>
   );

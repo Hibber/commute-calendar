@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { listDriverNames, requireAdmin, requireUser } from '@/lib/auth';
+import { listCoveringDriverNames, listDriverNames, requireAdmin, requireUser } from '@/lib/auth';
 import { emailFooter, notify } from '@/lib/notify';
 import { applyShiftAction, isShiftAction, parseEventId } from '@/lib/events';
+import { isUncovered } from '@/lib/coverage';
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdmin();
@@ -99,12 +100,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const event = result.event;
 
     if (action === 'decline') {
-      if (event.declined_by && event.declined_by.length >= 2) {
+      if (isUncovered(event, await listCoveringDriverNames())) {
+        const declined = event.declined_by ?? [];
         await notify('admins', {
           title: '🚨 No Coverage for Shift',
-          body: `Shift on ${event.date} at ${event.startTime} was declined by ${event.declined_by.join(', ')}.`,
+          body: `Shift on ${event.date} at ${event.startTime} was declined by ${declined.join(', ')}.`,
           subject: 'URGENT: No Coverage for Shift',
-          html: `<p>The shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong> has been declined by ${event.declined_by.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`,
+          html: `<p>The shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong> has been declined by ${declined.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`,
         });
       }
     } else {
