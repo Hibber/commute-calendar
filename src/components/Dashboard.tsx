@@ -98,6 +98,7 @@ export default function Dashboard({
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   
   const [formDates, setFormDates] = useState<string[]>([]);
+  const [formRecurring, setFormRecurring] = useState(false);
   const [formStartTime, setFormStartTime] = useState('09:00');
   const [formEndTime, setFormEndTime] = useState('17:00');
   
@@ -421,7 +422,9 @@ export default function Dashboard({
         type: 'shift',
         date,
         startTime: formStartTime,
-        endTime: formEndTime
+        endTime: formEndTime,
+        // The server expands this into one shift per week.
+        is_recurring: formRecurring
       }));
       res = await fetch(`${API_BASE}/api/events/batch_create`, {
         method: 'POST',
@@ -485,6 +488,7 @@ export default function Dashboard({
                   className="editorial-btn editorial-btn-primary"
                   onClick={() => {
                     setFormDates([format(new Date(), 'yyyy-MM-dd')]);
+                    setFormRecurring(false);
                     setSelectedEventId(null);
                     setIsModalOpen(true);
                   }}
@@ -664,7 +668,23 @@ export default function Dashboard({
                           </div>
                         </div>
                       )}
-                      
+
+                      {!selectedEventId && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.9rem', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={formRecurring}
+                            onChange={e => setFormRecurring(e.target.checked)}
+                          />
+                          <span>
+                            Repeat weekly for 3 weeks
+                            <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              Creates each selected day for the next 3 weeks. Deleting one day leaves the rest.
+                            </span>
+                          </span>
+                        </label>
+                      )}
+
                       <div className="time-inputs-container" style={{ display: 'flex', gap: '2rem' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
                           <label style={{ fontSize: '0.8rem', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Start Time</label>

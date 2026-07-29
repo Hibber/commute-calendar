@@ -21,7 +21,16 @@ const FROM = 'Commute Calendar <notifications@triddle.dev>';
  * names and emailed hardcoded addresses, and anyone whose Clerk name did not
  * exactly match got nothing.
  */
-export type Audience = 'admins' | 'members' | 'all';
+export type Audience =
+  | 'admins'
+  | 'members'
+  | 'all'
+  /**
+   * Specific people by display name. Used by the reminders, which are personal
+   * -- "you have not answered these" only makes sense sent to that one driver.
+   * Names that match nobody are simply skipped.
+   */
+  | { names: string[] };
 
 export interface Notification {
   /** Push notification title, and the email subject unless one is given. */
@@ -57,8 +66,10 @@ export function emailFooter(): string {
 export async function notify(audience: Audience, notification: Notification): Promise<void> {
   try {
     const everyone = await listRecipients();
+    const named = typeof audience === 'object' ? new Set(audience.names) : null;
     const recipients = everyone.filter((r) => {
       if (notification.actor && r.displayName === notification.actor) return false;
+      if (named) return named.has(r.displayName);
       if (audience === 'admins') return r.isAdmin;
       if (audience === 'members') return !r.isAdmin;
       return true;
