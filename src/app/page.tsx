@@ -1,8 +1,15 @@
 import { Show, SignInButton } from '@clerk/nextjs';
 import Dashboard from '../components/Dashboard';
+import { getSessionUser } from '@/lib/auth';
 import styles from './first-run.module.css';
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Identity and role are resolved server side and handed to the dashboard.
+  // The client cannot derive them reliably: `privateMetadata` is never sent to
+  // the browser, and the client's own name fallback disagreed with the one the
+  // API records actions under.
+  const session = await getSessionUser();
+
   return (
     <>
       <Show when="signed-out">
@@ -98,7 +105,11 @@ export default function HomePage() {
       </Show>
 
       <Show when="signed-in">
-        <Dashboard />
+        <Dashboard
+          isAdmin={session?.isAdmin ?? false}
+          driverName={session?.displayName ?? ''}
+          userGroup={session?.group ?? 'members'}
+        />
       </Show>
     </>
   );

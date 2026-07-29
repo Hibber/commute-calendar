@@ -45,10 +45,23 @@ export interface EventRow {
   [column: string]: unknown;
 }
 
+export interface ApplyShiftActionOptions {
+  /**
+   * Bypass the "already claimed by someone else" guard.
+   *
+   * Only ever set on the admin act-as path, where reassigning a shift that
+   * someone else holds is the whole point. Regular drivers keep the guard, so
+   * two of them racing on the same shift still cannot silently overwrite each
+   * other.
+   */
+  override?: boolean;
+}
+
 export async function applyShiftAction(
   id: number,
   action: ShiftAction,
   displayName: string,
+  options: ApplyShiftActionOptions = {},
 ): Promise<ShiftActionResult> {
   if (action === 'decline') {
     const { rows } = await sql<EventRow>`
@@ -57,6 +70,21 @@ export async function applyShiftAction(
         WHEN ${displayName} = ANY(COALESCE(declined_by, '{}'::text[])) THEN declined_by
         ELSE array_append(COALESCE(declined_by, '{}'::text[]), ${displayName})
       END
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    return rows[0] ? { outcome: 'applied', event: rows[0] } : { outcome: 'not_found' };
+  }
+
+  // An admin reassigning a shift writes the claim unconditionally -- they are
+  // resolving the schedule, so the current holder is exactly what they mean to
+  // replace.
+  if (options.override) {
+    const { rows } = await sql<EventRow>`
+      UPDATE events
+      SET claimed_by = ${displayName},
+          claim_type = ${action},
+          status = 'claimed'
       WHERE id = ${id}
       RETURNING *
     `;
