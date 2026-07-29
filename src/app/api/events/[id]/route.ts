@@ -83,28 +83,29 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const event = result.event;
 
     try {
-      const event = rows[0];
-      if (status === 'claimed') {
-        const subjectText = claim_type === 'borrow' 
-          ? `${claimed_by} offered their car for a shift` 
-          : `Riding with ${claimed_by} for a shift`;
-          
-        const bodyText = claim_type === 'borrow'
-          ? `has offered their car for`
-          : `is driving for`;
+      if (action === 'decline') {
+        if (event.declined_by && event.declined_by.length >= 2) {
+          await resend.emails.send({
+            from: 'Commute Calendar <notifications@triddle.dev>',
+            to: ['travis.riddlexx@gmail.com'],
+            subject: `URGENT: No Coverage for Shift`,
+            html: `<p>The shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong> has been declined by ${event.declined_by.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`
+          });
+        }
+      } else {
+        const subjectText = action === 'borrow'
+          ? `${displayName} offered their car for a shift`
+          : `Riding with ${displayName} for a shift`;
+
+        const bodyText = action === 'borrow'
+          ? 'has offered their car for'
+          : 'is driving for';
 
         await resend.emails.send({
           from: 'Commute Calendar <notifications@triddle.dev>',
           to: ['travis.riddlexx@gmail.com'],
           subject: subjectText,
-          html: `<p><strong>${claimed_by}</strong> ${bodyText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
-        });
-      } else if (event.declined_by && event.declined_by.length >= 2) {
-        await resend.emails.send({
-          from: 'Commute Calendar <notifications@triddle.dev>',
-          to: ['travis.riddlexx@gmail.com'],
-          subject: `Shift ${actionText} by ${displayName}`,
-          html: `<p><strong>${displayName}</strong> has ${actionText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
+          html: `<p><strong>${displayName}</strong> ${bodyText} the shift on <strong>${event.date}</strong> at <strong>${event.startTime}</strong>.</p><p>Check the <a href="https://schedule.triddle.dev">Commute Calendar</a> for details.</p>`
         });
       }
     } catch (e) {
