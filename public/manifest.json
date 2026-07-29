@@ -2,7 +2,7 @@
   "name": "Commute Calendar",
   "short_name": "Commute",
   "description": "Coordinate carpool schedules and availability blocks.",
-  "start_url": "/",
+  "start_url": "/calendar",
   "display": "standalone",
   "background_color": "#111111",
   "theme_color": "#111111",

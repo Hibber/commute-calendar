@@ -1,18 +1,19 @@
 import withPWAInit from "@ducanh2912/next-pwa";
 
-// `/` returns a different document depending on whether you are signed in, and
-// the sign-in return trip from Clerk is a redirect. Neither survives being run
-// through a service worker cache:
+// Auth-dependent documents and sign-in redirects do not survive a service
+// worker cache:
 //
 //  - The default `start-url` route rewrites an `opaqueredirect` response into a
 //    synthesized 200, which breaks the redirect that completes Clerk's
 //    handshake -- so the browser lands back on the signed-out document.
-//  - The `pages*` routes persist rendered HTML in the Cache API, which for this
-//    app means storing an authenticated dashboard on disk and being able to
-//    replay it later.
+//  - The `pages*` routes persist rendered HTML in the Cache API, which for
+//    `/calendar` means storing an authenticated dashboard on disk and being
+//    able to replay it later.
 //
-// Documents therefore always come from the network. Static assets keep their
-// caching, so the app still installs and loads as a PWA.
+// `/` and `/calendar` are separate routes now, so a cached landing page can no
+// longer stand in for the schedule. Documents still always come from the
+// network: `/` redirects signed-in users, so it is not static either. Static
+// assets keep their caching, so the app still installs and loads as a PWA.
 const documentIsSameOriginPage = ({ url: { pathname }, sameOrigin }) =>
   sameOrigin && !pathname.startsWith("/api/");
 

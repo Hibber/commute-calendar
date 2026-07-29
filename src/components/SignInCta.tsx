@@ -14,7 +14,7 @@ export default function SignInCta({ className }: { className?: string }) {
   const [pending, setPending] = useState(false);
 
   return (
-    <SignInButton fallbackRedirectUrl="/">
+    <SignInButton forceRedirectUrl="/calendar" fallbackRedirectUrl="/calendar">
       <button
         type="button"
         className={className}
