@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore, FormEvent } from 'react';
 import { format, startOfWeek, addDays, subDays } from 'date-fns';
-import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageCircle, Send } from 'lucide-react';
+import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageCircle, Send, BellRing } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
 import { isUncovered } from '@/lib/coverage';
 
@@ -112,6 +112,11 @@ export default function Dashboard({
   const [drivers, setDrivers] = useState<string[]>([]);
   const [actAs, setActAs] = useState('');
   const [pendingOverride, setPendingOverride] = useState<{ action: ShiftAction; claimedBy: string } | null>(null);
+
+  // Outcome of the last "remind" press, shown in the modal so the admin can see
+  // who was actually chased rather than pressing again in the dark.
+  const [remindState, setRemindState] = useState<'idle' | 'sending'>('idle');
+  const [remindResult, setRemindResult] = useState<string | null>(null);
 
   const isMounted = useSyncExternalStore(
     hydratedStore.subscribe,
@@ -260,6 +265,37 @@ export default function Dashboard({
     fetchEvents();
   };
 
+  /**
+   * Chase whoever has not answered this shift. The server decides who that is;
+   * it deliberately skips anyone who already claimed or declined it.
+   */
+  const handleRemind = async () => {
+    if (!selectedEventId) return;
+    setActionError(null);
+    setRemindResult(null);
+    setRemindState('sending');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/events/${selectedEventId}/remind`, { method: 'POST' });
+      if (!res.ok) {
+        setActionError(describeFailure(res.status, 'send that reminder'));
+        return;
+      }
+      const data = await res.json();
+      if (data.reason === 'covered') {
+        setRemindResult(`No reminder sent — ${data.claimed_by} is already driving this shift.`);
+      } else if (data.reason === 'everyone_responded') {
+        setRemindResult('No reminder sent — everyone has already responded.');
+      } else {
+        setRemindResult(`Reminded ${data.drivers.join(' and ')}.`);
+      }
+    } catch {
+      setActionError('Could not reach the server. Please try again.');
+    } finally {
+      setRemindState('idle');
+    }
+  };
+
   const fetchTraffic = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/traffic`);
@@ -323,6 +359,7 @@ export default function Dashboard({
     setFormEndTime(event.endTime);
     setNewComment('');
     setPendingOverride(null);
+    setRemindResult(null);
     setIsModalOpen(true);
   };
 
@@ -861,11 +898,28 @@ export default function Dashboard({
 
                 </div>
 
+                {remindResult && (
+                  <p style={{ margin: '1rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }} role="status">
+                    {remindResult}
+                  </p>
+                )}
+
                 {/* MODAL FOOTER ACTIONS */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: 'var(--border-light)' }}>
                   {selectedEventId && isAdmin && (
                     <button type="button" onClick={handleDelete} className="editorial-btn" style={{ marginRight: 'auto', color: '#d32f2f', borderColor: 'transparent' }}>
                       <Trash2 size={16} /> Delete Shift
+                    </button>
+                  )}
+                  {selectedEventId && isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleRemind}
+                      disabled={remindState === 'sending'}
+                      className="editorial-btn"
+                      title="Notifies only the drivers who have not answered this shift"
+                    >
+                      <BellRing size={16} /> {remindState === 'sending' ? 'Sending…' : 'Send reminder'}
                     </button>
                   )}
                   <button type="button" onClick={() => setIsModalOpen(false)} className="editorial-btn">Close</button>
