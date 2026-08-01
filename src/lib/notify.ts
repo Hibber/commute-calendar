@@ -1,11 +1,11 @@
 import { Resend } from 'resend';
 import { listRecipients } from './auth';
 import { sendPushNotification } from './push';
+import { SITE_URL } from './site';
 
 // Vercel build will crash if this is undefined during static analysis, so we provide a fallback
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
-const SITE_URL = 'https://schedule.triddle.dev';
 const FROM = 'Commute Calendar <notifications@triddle.dev>';
 
 /**
@@ -26,11 +26,11 @@ export type Audience =
   | 'members'
   | 'all'
   /**
-   * Specific people by display name. Used by the reminders, which are personal
-   * -- "you have not answered these" only makes sense sent to that one driver.
-   * Names that match nobody are simply skipped.
+   * Specific people, by Clerk id. Used by the reminders, which are personal --
+   * "you have not answered these" only makes sense sent to that one driver.
+   * Ids that match nobody are simply skipped.
    */
-  | { names: string[] };
+  | { userIds: string[] };
 
 export interface Notification {
   /** Push notification title, and the email subject unless one is given. */
@@ -45,15 +45,31 @@ export interface Notification {
    */
   html?: string;
   /**
-   * Display name of the person who caused the notification. They are excluded
-   * from delivery; nobody needs a push about their own action.
+   * Clerk id of the person who caused the notification. They are excluded from
+   * delivery; nobody needs a push about their own action.
    */
-  actor?: string;
+  actorId?: string;
 }
 
 /** A link back to the site, appended to every email body. */
 export function emailFooter(): string {
   return `<p>Check the <a href="${SITE_URL}">Commute Calendar</a> for details.</p>`;
+}
+
+/**
+ * Escape a value for interpolation into email HTML.
+ *
+ * Display names come from Clerk's `firstName`, which the user sets themselves,
+ * and shift fields come from the request body. Both end up inside notification
+ * emails, so neither can be trusted to be markup-free.
+ */
+export function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -66,10 +82,10 @@ export function emailFooter(): string {
 export async function notify(audience: Audience, notification: Notification): Promise<void> {
   try {
     const everyone = await listRecipients();
-    const named = typeof audience === 'object' ? new Set(audience.names) : null;
+    const targeted = typeof audience === 'object' ? new Set(audience.userIds) : null;
     const recipients = everyone.filter((r) => {
-      if (notification.actor && r.displayName === notification.actor) return false;
-      if (named) return named.has(r.displayName);
+      if (notification.actorId && r.userId === notification.actorId) return false;
+      if (targeted) return targeted.has(r.userId);
       if (audience === 'admins') return r.isAdmin;
       if (audience === 'members') return !r.isAdmin;
       return true;
@@ -77,8 +93,7 @@ export async function notify(audience: Audience, notification: Notification): Pr
 
     if (recipients.length === 0) return;
 
-    const pushTargets = [...new Set(recipients.map((r) => r.displayName))];
-    const pushPromise = sendPushNotification(pushTargets, {
+    const pushPromise = sendPushNotification(recipients, {
       title: notification.title,
       body: notification.body,
       url: SITE_URL,

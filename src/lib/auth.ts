@@ -1,5 +1,6 @@
 import { auth, clerkClient, type User } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { rowBelongsTo, type OwnedRow, type PersonRef } from './identity';
 
 export interface SessionUser {
   userId: string;
@@ -19,6 +20,10 @@ export interface SessionUser {
    * not been put in a group.
    */
   group: string;
+  /**
+   * Whether this account is actually part of the carpool. See `isMemberUser`.
+   */
+  isMember: boolean;
 }
 
 type AuthSuccess = { ok: true; user: SessionUser };
@@ -51,12 +56,31 @@ export function isAdminUser(user: User): boolean {
 }
 
 /**
- * A person notifications can be delivered to. `displayName` is the key push
- * subscriptions are stored under; `email` is the Clerk primary address, or
- * null when the account somehow has none.
+ * Whether this account belongs to the carpool.
+ *
+ * Signing in is not the same as being a member. Clerk will happily accept any
+ * Google account, and without this an unknown signup would read the whole
+ * schedule, claim shifts, and land in every notification fan-out.
+ *
+ * Membership is an explicitly set `publicMetadata.group`. The group already
+ * exists to word shift actions, and the session defaults it to `members` when
+ * unset -- so the presence of the key, rather than its value, is what
+ * distinguishes someone an admin has placed in the carpool from someone who
+ * merely signed in. Admins are members by definition.
  */
-export interface Recipient {
-  displayName: string;
+export function isMemberUser(user: User): boolean {
+  return isAdminUser(user) || user.publicMetadata?.group !== undefined;
+}
+
+/**
+ * A person notifications can be delivered to.
+ *
+ * Carries both identity keys: `userId` is what new rows record and what push
+ * subscriptions are looked up by, `displayName` is what older rows still carry.
+ * `email` is the Clerk primary address, or null when the account somehow has
+ * none.
+ */
+export interface Recipient extends PersonRef {
   email: string | null;
   isAdmin: boolean;
 }
@@ -72,11 +96,16 @@ export interface Recipient {
 export async function listRecipients(): Promise<Recipient[]> {
   const client = await clerkClient();
   const { data } = await client.users.getUserList({ limit: 100 });
-  return data.map((user) => {
+  // Non-members are excluded here rather than at each call site, which also
+  // keeps them out of the act-as roster and out of the coverage calculation --
+  // a stranger who never declines would otherwise make a shift look answerable
+  // forever.
+  return data.filter(isMemberUser).map((user) => {
     const primary =
       user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId) ??
       user.emailAddresses[0];
     return {
+      userId: user.id,
       displayName: displayNameFor(user),
       email: primary?.emailAddress ?? null,
       isAdmin: isAdminUser(user),
@@ -98,19 +127,22 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     displayName: displayNameFor(user),
     isAdmin: isAdminUser(user),
     group: (user.publicMetadata?.group as string) || 'members',
+    isMember: isMemberUser(user),
   };
 }
 
 /**
- * Every known driver, by the name their actions are recorded under.
+ * Every known driver.
  *
  * This is the allow-list for admin act-as: an admin may only file an action for
- * a name returned here, so `claimed_by` can never be set to an arbitrary string
- * supplied by the client.
+ * someone returned here, so a claim can never be attributed to an arbitrary
+ * string supplied by the client.
  */
-export async function listDriverNames(): Promise<string[]> {
+export async function listDrivers(): Promise<PersonRef[]> {
   const recipients = await listRecipients();
-  return [...new Set(recipients.map((r) => r.displayName))].sort((a, b) => a.localeCompare(b));
+  return recipients
+    .map(({ userId, displayName }) => ({ userId, displayName }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
 /**
@@ -118,20 +150,58 @@ export async function listDriverNames(): Promise<string[]> {
  * admin. This is the set coverage is judged against: an admin schedules shifts,
  * they do not drive them, so their silence should never read as a decline.
  */
-export async function listCoveringDriverNames(): Promise<string[]> {
+export async function listCoveringDrivers(): Promise<PersonRef[]> {
   const recipients = await listRecipients();
-  return [...new Set(recipients.filter((r) => !r.isAdmin).map((r) => r.displayName))].sort(
-    (a, b) => a.localeCompare(b),
-  );
+  return recipients
+    .filter((r) => !r.isAdmin)
+    .map(({ userId, displayName }) => ({ userId, displayName }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-/** Requires a signed-in user. Every route that touches carpool data uses this. */
+/**
+ * Work out which current member a stored row belongs to.
+ *
+ * Rows carry an id, a name, or -- before the identity migration ran -- only a
+ * name. Whoever is resolved here is a person Clerk still knows about, so a
+ * claim left behind by someone who has left the carpool resolves to null and is
+ * simply not notified.
+ */
+export async function resolveOwner(row: OwnedRow): Promise<PersonRef | null> {
+  if (!row.ownerId && !row.ownerName) return null;
+  const drivers = await listDrivers();
+  return drivers.find((driver) => rowBelongsTo(row, driver)) ?? null;
+}
+
+/**
+ * Driver names for display, de-duplicated.
+ *
+ * Only for the roster the admin picks from; anything that has to identify a
+ * person should use `listDrivers` and match on the id.
+ */
+export async function listDriverNames(): Promise<string[]> {
+  const drivers = await listDrivers();
+  return [...new Set(drivers.map((d) => d.displayName))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Requires a signed-in member. Every route that touches carpool data uses this.
+ *
+ * Signed in but not in the carpool is a 403 rather than a 401: the credentials
+ * are fine, the account simply has no business here, and signing in again would
+ * not change that.
+ */
 export async function requireUser(): Promise<AuthResult> {
   const user = await getSessionUser();
   if (!user) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    };
+  }
+  if (!user.isMember) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
     };
   }
   return { ok: true, user };

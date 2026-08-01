@@ -3,6 +3,9 @@ import { sql } from '@vercel/postgres';
 import { listRecipients } from '@/lib/auth';
 import { emailFooter, notify } from '@/lib/notify';
 import { isUncovered } from '@/lib/coverage';
+import { isAuthorizedCron } from '@/lib/cron-auth';
+import { serverError } from '@/lib/http';
+import { personInList } from '@/lib/identity';
 import {
   addDaysToDateString,
   formatDateString,
@@ -30,20 +33,7 @@ interface ShiftRow {
   claimed_by: string | null;
   status: string;
   declined_by: string[] | null;
-}
-
-/**
- * Whether this request really came from the scheduler.
- *
- * Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without the check the
- * route is an open endpoint anyone could hit to spam the carpool with pushes.
- * If `CRON_SECRET` is unset the route refuses to run rather than defaulting to
- * open -- a misconfiguration should stop reminders, not expose them.
- */
-function isAuthorizedCron(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return request.headers.get('authorization') === `Bearer ${secret}`;
+  declined_by_ids: string[] | null;
 }
 
 /**
@@ -69,7 +59,7 @@ export async function GET(request: Request) {
     const tomorrow = addDaysToDateString(today, 1);
 
     const { rows: shifts } = await sql<ShiftRow>`
-      SELECT id, date, "startTime", claimed_by, status, declined_by
+      SELECT id, date, "startTime", claimed_by, status, declined_by, declined_by_ids
       FROM events
       WHERE type = 'shift' AND date >= ${today} AND date <= ${horizon}
       ORDER BY date ASC, "startTime" ASC
@@ -77,13 +67,14 @@ export async function GET(request: Request) {
 
     const recipients = await listRecipients();
     const drivers = recipients.filter((r) => !r.isAdmin);
-    const driverNames = [...new Set(drivers.map((r) => r.displayName))];
 
     // 1. Per-driver nudges about shifts they have not answered either way.
     let nudged = 0;
     for (const driver of drivers) {
+      // Matched by id with a name fallback, so a decline recorded before the
+      // identity migration still counts as an answer.
       const outstanding = shifts.filter(
-        (s) => s.status !== 'claimed' && !(s.declined_by ?? []).includes(driver.displayName),
+        (s) => s.status !== 'claimed' && !personInList(s.declined_by_ids, s.declined_by, driver),
       );
       if (outstanding.length === 0) continue;
 
@@ -92,7 +83,7 @@ export async function GET(request: Request) {
         .join('');
 
       await notify(
-        { names: [driver.displayName] },
+        { userIds: [driver.userId] },
         {
           title: `${outstanding.length} shift${outstanding.length === 1 ? '' : 's'} need an answer`,
           body:
@@ -108,7 +99,7 @@ export async function GET(request: Request) {
 
     // 2. Tomorrow with nobody covering it.
     const uncoveredTomorrow = shifts.filter(
-      (s) => s.date === tomorrow && isUncovered(s, driverNames),
+      (s) => s.date === tomorrow && isUncovered(s, drivers),
     );
 
     for (const shift of uncoveredTomorrow) {
@@ -128,7 +119,6 @@ export async function GET(request: Request) {
       uncoveredTomorrow: uncoveredTomorrow.length,
     });
   } catch (error) {
-    console.error('Reminder sweep failed:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Reminder sweep failed', error);
   }
 }

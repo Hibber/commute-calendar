@@ -3,6 +3,7 @@ import { sql } from '@vercel/postgres';
 import { requireUser } from '@/lib/auth';
 import { notify } from '@/lib/notify';
 import { parseEventId } from '@/lib/events';
+import { serverError } from '@/lib/http';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireUser();
@@ -24,8 +25,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const { rows } = await sql`
-      INSERT INTO comments (event_id, author_name, content)
-      VALUES (${event_id}, ${authorName}, ${content})
+      INSERT INTO comments (event_id, author_name, author_id, content)
+      VALUES (${event_id}, ${authorName}, ${session.user.userId}, ${content})
       RETURNING *
     `;
 
@@ -39,11 +40,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await notify('all', {
       title: shift ? `💬 ${authorName} on the ${shift.date} shift` : `💬 ${authorName} commented`,
       body: preview,
-      actor: authorName,
+      actorId: session.user.userId,
     });
 
     return NextResponse.json(rows[0]);
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Posting comment failed', error);
   }
 }

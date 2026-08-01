@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { requireAdmin, requireUser } from '@/lib/auth';
-import { emailFooter, notify } from '@/lib/notify';
+import { emailFooter, escapeHtml, notify } from '@/lib/notify';
+import { serverError } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export async function GET() {
     `;
     return NextResponse.json({ events: rows });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Listing events failed', error);
   }
 }
 
@@ -60,13 +61,13 @@ export async function POST(request: Request) {
         title: 'New Shift Scheduled',
         body: `A shift was added on ${date} from ${startTime} to ${endTime}.`,
         subject: 'New Commute Shift Scheduled',
-        html: `<p>A new commute shift has been scheduled for <strong>${date}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>.</p>${emailFooter()}`,
-        actor: session.user.displayName,
+        html: `<p>A new commute shift has been scheduled for <strong>${escapeHtml(date)}</strong> from <strong>${escapeHtml(startTime)}</strong> to <strong>${escapeHtml(endTime)}</strong>.</p>${emailFooter()}`,
+        actorId: session.user.userId,
       });
     }
 
     return NextResponse.json(rows[0]);
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Creating event failed', error);
   }
 }

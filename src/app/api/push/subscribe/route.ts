@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { requireUser } from '@/lib/auth';
+import { serverError } from '@/lib/http';
 
 export async function POST(request: Request) {
   const session = await requireUser();
@@ -18,16 +19,20 @@ export async function POST(request: Request) {
 
     const { endpoint, keys } = subscription;
 
+    // The id is what delivery matches on, so re-registering a device is also how
+    // a subscription made before the identity migration acquires one.
     await sql`
-      INSERT INTO subscriptions (user_name, endpoint, p256dh, auth)
-      VALUES (${userName}, ${endpoint}, ${keys.p256dh}, ${keys.auth})
+      INSERT INTO subscriptions (user_name, user_id, endpoint, p256dh, auth)
+      VALUES (${userName}, ${session.user.userId}, ${endpoint}, ${keys.p256dh}, ${keys.auth})
       ON CONFLICT (endpoint) DO UPDATE
-      SET user_name = EXCLUDED.user_name, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth
+      SET user_name = EXCLUDED.user_name,
+          user_id = EXCLUDED.user_id,
+          p256dh = EXCLUDED.p256dh,
+          auth = EXCLUDED.auth
     `;
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Subscription error:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Push subscribe failed', error);
   }
 }

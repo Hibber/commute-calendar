@@ -4,6 +4,8 @@ import { listRecipients, requireAdmin } from '@/lib/auth';
 import { emailFooter, notify } from '@/lib/notify';
 import { parseEventId } from '@/lib/events';
 import { formatDateString, formatTimeString } from '@/lib/schedule-dates';
+import { serverError } from '@/lib/http';
+import { personInList } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +16,7 @@ interface ShiftRow {
   claimed_by: string | null;
   status: string;
   declined_by: string[] | null;
+  declined_by_ids: string[] | null;
 }
 
 /**
@@ -38,7 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const { rows } = await sql<ShiftRow>`
-      SELECT id, date, "startTime", claimed_by, status, declined_by
+      SELECT id, date, "startTime", claimed_by, status, declined_by, declined_by_ids
       FROM events WHERE id = ${id}
     `;
     const shift = rows[0];
@@ -56,10 +59,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       });
     }
 
-    const declined = new Set(shift.declined_by ?? []);
-    const outstanding = (await listRecipients())
-      .filter((r) => !r.isAdmin && !declined.has(r.displayName))
-      .map((r) => r.displayName);
+    // Matched by id with a name fallback, so a driver who declined before the
+    // identity migration -- or who has renamed themselves since -- is not
+    // chased about a shift they already answered.
+    const outstanding = (await listRecipients()).filter(
+      (r) => !r.isAdmin && !personInList(shift.declined_by_ids, shift.declined_by, r),
+    );
 
     if (outstanding.length === 0) {
       return NextResponse.json({ notified: 0, reason: 'everyone_responded' });
@@ -67,7 +72,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const when = `${formatDateString(shift.date)} at ${formatTimeString(shift.startTime)}`;
     await notify(
-      { names: [...new Set(outstanding)] },
+      { userIds: outstanding.map((r) => r.userId) },
       {
         title: 'Can you take this shift?',
         body: `${when} still needs a driver.`,
@@ -76,9 +81,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       },
     );
 
-    return NextResponse.json({ notified: outstanding.length, drivers: outstanding });
+    return NextResponse.json({
+      notified: outstanding.length,
+      drivers: outstanding.map((r) => r.displayName),
+    });
   } catch (error) {
-    console.error('Reminder failed:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Reminder failed', error);
   }
 }
