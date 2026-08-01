@@ -1,4 +1,5 @@
 import { sql } from '@vercel/postgres';
+import type { PersonRef } from './identity';
 
 /**
  * The only shift mutations a non-admin driver can request. The client sends one
@@ -38,10 +39,14 @@ export interface EventRow {
   date: string;
   startTime: string;
   endTime: string;
+  /** Display name of the claimer. Kept in step with `claimed_by_id`. */
   claimed_by: string | null;
+  /** Clerk id of the claimer. Null on rows written before the migration. */
+  claimed_by_id: string | null;
   claim_type: ShiftAction | null;
   status: string;
   declined_by: string[] | null;
+  declined_by_ids: string[] | null;
   [column: string]: unknown;
 }
 
@@ -60,16 +65,25 @@ export interface ApplyShiftActionOptions {
 export async function applyShiftAction(
   id: number,
   action: ShiftAction,
-  displayName: string,
+  actor: PersonRef,
   options: ApplyShiftActionOptions = {},
 ): Promise<ShiftActionResult> {
+  const { userId, displayName } = actor;
+
   if (action === 'decline') {
+    // Both keys are appended, and both are checked for an existing entry, so a
+    // driver who declined before the identity migration cannot add a second
+    // decline under their id.
     const { rows } = await sql<EventRow>`
       UPDATE events
       SET declined_by = CASE
-        WHEN ${displayName} = ANY(COALESCE(declined_by, '{}'::text[])) THEN declined_by
-        ELSE array_append(COALESCE(declined_by, '{}'::text[]), ${displayName})
-      END
+            WHEN ${displayName} = ANY(COALESCE(declined_by, '{}'::text[])) THEN declined_by
+            ELSE array_append(COALESCE(declined_by, '{}'::text[]), ${displayName})
+          END,
+          declined_by_ids = CASE
+            WHEN ${userId} = ANY(COALESCE(declined_by_ids, '{}'::text[])) THEN declined_by_ids
+            ELSE array_append(COALESCE(declined_by_ids, '{}'::text[]), ${userId})
+          END
       WHERE id = ${id}
       RETURNING *
     `;
@@ -83,6 +97,7 @@ export async function applyShiftAction(
     const { rows } = await sql<EventRow>`
       UPDATE events
       SET claimed_by = ${displayName},
+          claimed_by_id = ${userId},
           claim_type = ${action},
           status = 'claimed'
       WHERE id = ${id}
@@ -95,15 +110,22 @@ export async function applyShiftAction(
   // overwrite each other -- the second one is told it was already taken. A
   // driver may still re-claim a shift that is already theirs, which is how
   // switching between "drive" and "borrow" works.
+  //
+  // "Already theirs" is judged by id, falling back to the name only when the row
+  // has no id -- otherwise a driver who renamed themselves would be locked out
+  // of a shift they hold, and a newcomer inheriting an old name could take it
+  // over.
   const { rows } = await sql<EventRow>`
     UPDATE events
     SET claimed_by = ${displayName},
+        claimed_by_id = ${userId},
         claim_type = ${action},
         status = 'claimed'
     WHERE id = ${id}
       AND (
         status IS DISTINCT FROM 'claimed'
-        OR claimed_by IS NOT DISTINCT FROM ${displayName}
+        OR (claimed_by_id IS NOT NULL AND claimed_by_id = ${userId})
+        OR (claimed_by_id IS NULL AND claimed_by IS NOT DISTINCT FROM ${displayName})
       )
     RETURNING *
   `;

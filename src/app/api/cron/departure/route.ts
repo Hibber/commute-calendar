@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
+import { listDrivers } from '@/lib/auth';
 import { isAuthorizedCron } from '@/lib/cron-auth';
+import { rowBelongsTo } from '@/lib/identity';
 import { serverError } from '@/lib/http';
 import { sendPushNotification } from '@/lib/push';
 import { getCommuteTraffic } from '@/lib/traffic';
@@ -36,7 +38,8 @@ interface ClaimedShift {
   id: number;
   date: string;
   startTime: string;
-  claimed_by: string;
+  claimed_by: string | null;
+  claimed_by_id: string | null;
 }
 
 /**
@@ -85,7 +88,7 @@ export async function GET(request: Request) {
     // been alerted. Fetched before touching TomTom so the many pings that have
     // nothing to do cost one cheap query and no API quota.
     const { rows: shifts } = await sql<ClaimedShift>`
-      SELECT id, date, "startTime", claimed_by
+      SELECT id, date, "startTime", claimed_by, claimed_by_id
       FROM events
       WHERE type = 'shift'
         AND date = ${today}
@@ -108,6 +111,9 @@ export async function GET(request: Request) {
     }
 
     const buffer = Number(process.env.DEPARTURE_BUFFER_MINUTES ?? DEFAULT_BUFFER_MINUTES);
+    // Resolved once rather than per shift: matching happens locally, so a
+    // morning's worth of shifts still costs a single Clerk lookup.
+    const drivers = await listDrivers();
     let notified = 0;
 
     for (const shift of shifts) {
@@ -123,7 +129,9 @@ export async function GET(request: Request) {
       // Marking first means a second ping racing this one finds nothing to
       // claim, so nobody gets the same alert twice. A shift reassigned after
       // its alert went out will not re-alert; the new driver hears about the
-      // claim itself instead.
+      // claim itself instead. The row is marked even when the claimer cannot be
+      // resolved -- they have left the carpool, so there is nobody to tell and
+      // no reason to reconsider the shift on every later ping.
       const { rows: claimed } = await sql`
         UPDATE events
         SET departure_notified_at = NOW()
@@ -132,7 +140,12 @@ export async function GET(request: Request) {
       `;
       if (claimed.length === 0) continue;
 
-      await sendPushNotification([shift.claimed_by], {
+      const claimer = drivers.find((driver) =>
+        rowBelongsTo({ ownerId: shift.claimed_by_id, ownerName: shift.claimed_by }, driver),
+      );
+      if (!claimer) continue;
+
+      await sendPushNotification([claimer], {
         title: '🚗 Time to leave',
         body: `Leave by ${formatTimeString(toClockString(departure))} for the ${formatTimeString(shift.startTime)} shift — ${traffic.totalMinutes} min drive (${traffic.trafficCondition}).`,
         url: SITE_URL,

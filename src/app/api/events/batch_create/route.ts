@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       body: `${publisher} published ${created} new shift(s).`,
       subject: `${publisher} published ${created} new shift(s)`,
       html: `<p><strong>${escapeHtml(publisher)}</strong> has published <strong>${created}</strong> new shift(s) to the schedule.</p><p>Please check the <a href="${SITE_URL}">Commute Calendar</a> to submit your availability.</p>`,
-      actor: publisher,
+      actorId: session.user.userId,
     });
 
     return NextResponse.json({ success: true, events: createdEvents });

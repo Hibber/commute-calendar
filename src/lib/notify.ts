@@ -26,11 +26,11 @@ export type Audience =
   | 'members'
   | 'all'
   /**
-   * Specific people by display name. Used by the reminders, which are personal
-   * -- "you have not answered these" only makes sense sent to that one driver.
-   * Names that match nobody are simply skipped.
+   * Specific people, by Clerk id. Used by the reminders, which are personal --
+   * "you have not answered these" only makes sense sent to that one driver.
+   * Ids that match nobody are simply skipped.
    */
-  | { names: string[] };
+  | { userIds: string[] };
 
 export interface Notification {
   /** Push notification title, and the email subject unless one is given. */
@@ -45,10 +45,10 @@ export interface Notification {
    */
   html?: string;
   /**
-   * Display name of the person who caused the notification. They are excluded
-   * from delivery; nobody needs a push about their own action.
+   * Clerk id of the person who caused the notification. They are excluded from
+   * delivery; nobody needs a push about their own action.
    */
-  actor?: string;
+  actorId?: string;
 }
 
 /** A link back to the site, appended to every email body. */
@@ -82,10 +82,10 @@ export function escapeHtml(value: string): string {
 export async function notify(audience: Audience, notification: Notification): Promise<void> {
   try {
     const everyone = await listRecipients();
-    const named = typeof audience === 'object' ? new Set(audience.names) : null;
+    const targeted = typeof audience === 'object' ? new Set(audience.userIds) : null;
     const recipients = everyone.filter((r) => {
-      if (notification.actor && r.displayName === notification.actor) return false;
-      if (named) return named.has(r.displayName);
+      if (notification.actorId && r.userId === notification.actorId) return false;
+      if (targeted) return targeted.has(r.userId);
       if (audience === 'admins') return r.isAdmin;
       if (audience === 'members') return !r.isAdmin;
       return true;
@@ -93,8 +93,7 @@ export async function notify(audience: Audience, notification: Notification): Pr
 
     if (recipients.length === 0) return;
 
-    const pushTargets = [...new Set(recipients.map((r) => r.displayName))];
-    const pushPromise = sendPushNotification(pushTargets, {
+    const pushPromise = sendPushNotification(recipients, {
       title: notification.title,
       body: notification.body,
       url: SITE_URL,

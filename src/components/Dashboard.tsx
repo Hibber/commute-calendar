@@ -6,6 +6,7 @@ import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageC
 import { UserButton } from '@clerk/nextjs';
 import { isUncovered } from '@/lib/coverage';
 import { formatTimeString } from '@/lib/schedule-dates';
+import type { PersonRef } from '@/lib/identity';
 
 interface Comment {
   id: number;
@@ -55,6 +56,7 @@ interface EventData {
   status: string;
   claim_type?: 'drive' | 'borrow' | null;
   declined_by?: string[];
+  declined_by_ids?: string[];
   comments?: Comment[];
 }
 
@@ -85,7 +87,7 @@ interface DashboardProps {
   driverName: string;
   userGroup: string;
   /** The drivers a shift can be covered by, for the no-coverage check. */
-  coveringDrivers: string[];
+  coveringDrivers: PersonRef[];
   /**
    * This user's signed iCal subscribe URL, or null when the feed is not
    * configured on the server.

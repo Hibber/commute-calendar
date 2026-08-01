@@ -62,7 +62,7 @@ export async function POST(request: Request) {
         body: `A shift was added on ${date} from ${startTime} to ${endTime}.`,
         subject: 'New Commute Shift Scheduled',
         html: `<p>A new commute shift has been scheduled for <strong>${escapeHtml(date)}</strong> from <strong>${escapeHtml(startTime)}</strong> to <strong>${escapeHtml(endTime)}</strong>.</p>${emailFooter()}`,
-        actor: session.user.displayName,
+        actorId: session.user.userId,
       });
     }
 

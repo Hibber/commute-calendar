@@ -25,8 +25,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const { rows } = await sql`
-      INSERT INTO comments (event_id, author_name, content)
-      VALUES (${event_id}, ${authorName}, ${content})
+      INSERT INTO comments (event_id, author_name, author_id, content)
+      VALUES (${event_id}, ${authorName}, ${session.user.userId}, ${content})
       RETURNING *
     `;
 
@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await notify('all', {
       title: shift ? `💬 ${authorName} on the ${shift.date} shift` : `💬 ${authorName} commented`,
       body: preview,
-      actor: authorName,
+      actorId: session.user.userId,
     });
 
     return NextResponse.json(rows[0]);

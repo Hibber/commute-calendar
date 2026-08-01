@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { listDriverNames } from '@/lib/auth';
+import { listDrivers } from '@/lib/auth';
 import { isValidFeedToken } from '@/lib/calendar-feed';
 import { buildCalendar, type IcsEvent } from '@/lib/ics';
 import { serverError } from '@/lib/http';
@@ -37,8 +37,8 @@ export async function GET(request: Request) {
 
     // A valid signature for someone who has since left the carpool should stop
     // working, and the roster is the same one the rest of the app trusts.
-    const roster = await listDriverNames();
-    if (!roster.includes(user)) {
+    const subscriber = (await listDrivers()).find((driver) => driver.displayName === user);
+    if (!subscriber) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -48,7 +48,11 @@ export async function GET(request: Request) {
       ? await sql<IcsEvent>`
           SELECT id, date, "startTime", "endTime", notes, claimed_by, claim_type, declined_by
           FROM events
-          WHERE type = 'shift' AND date >= ${since} AND claimed_by = ${user}
+          WHERE type = 'shift' AND date >= ${since}
+            AND (
+              claimed_by_id = ${subscriber.userId}
+              OR (claimed_by_id IS NULL AND claimed_by = ${subscriber.displayName})
+            )
           ORDER BY date ASC, "startTime" ASC
         `
       : await sql<IcsEvent>`

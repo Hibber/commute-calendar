@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listCoveringDriverNames, requireUser } from '@/lib/auth';
+import { listCoveringDrivers, requireUser } from '@/lib/auth';
 import { emailFooter, escapeHtml, notify } from '@/lib/notify';
 import { serverError } from '@/lib/http';
 import { applyShiftAction, isShiftAction, parseEventId, type ShiftAction } from '@/lib/events';
@@ -11,6 +11,7 @@ export async function PUT(request: Request) {
   // The submitting driver is taken from the session, never from the request
   // body, so a caller cannot submit choices on someone else's behalf.
   const driverName = session.user.displayName;
+  const actor = { userId: session.user.userId, displayName: driverName };
 
   try {
     const { updates } = await request.json();
@@ -43,10 +44,10 @@ export async function PUT(request: Request) {
     const summaryItems: string[] = [];
 
     // Resolved once for the whole batch rather than per shift.
-    const coveringDrivers = await listCoveringDriverNames();
+    const coveringDrivers = await listCoveringDrivers();
 
     for (const { id, action } of parsed) {
-      const result = await applyShiftAction(id, action, driverName);
+      const result = await applyShiftAction(id, action, actor);
 
       if (result.outcome === 'not_found') continue;
 
@@ -99,7 +100,7 @@ export async function PUT(request: Request) {
         body: `${driverName} submitted choices for ${updatedEvents.length} shift(s).`,
         subject: `Schedule Update: ${driverName} submitted choices`,
         html: summaryHtml,
-        actor: driverName,
+        actorId: session.user.userId,
       });
     }
 

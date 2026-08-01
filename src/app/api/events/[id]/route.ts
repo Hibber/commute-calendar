@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { listCoveringDriverNames, listDriverNames, requireAdmin, requireUser } from '@/lib/auth';
+import { listCoveringDrivers, listDrivers, requireAdmin, requireUser, resolveOwner } from '@/lib/auth';
+import type { PersonRef } from '@/lib/identity';
 import { emailFooter, escapeHtml, notify } from '@/lib/notify';
 import { applyShiftAction, isShiftAction, parseEventId } from '@/lib/events';
 import { isUncovered } from '@/lib/coverage';
@@ -14,6 +15,7 @@ interface EventRow {
   startTime: string;
   endTime: string;
   claimed_by: string | null;
+  claimed_by_id: string | null;
 }
 
 /**
@@ -43,24 +45,30 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     if (deleted && isNoteworthy(deleted)) {
       const when = `${formatDateString(deleted.date)} at ${formatTimeString(deleted.startTime)}`;
-      if (deleted.claimed_by) {
+      const claimer = await resolveOwner({
+        ownerId: deleted.claimed_by_id,
+        ownerName: deleted.claimed_by,
+      });
+
+      if (claimer) {
         // Someone had committed to this one, so it is their plan that changed.
         await notify(
-          { names: [deleted.claimed_by] },
+          { userIds: [claimer.userId] },
           {
             title: 'Shift cancelled',
             body: `The shift you claimed on ${when} was cancelled.`,
             subject: 'A shift you claimed was cancelled',
             html: `<p>The shift on <strong>${escapeHtml(when)}</strong>, which you had claimed, was cancelled by ${escapeHtml(session.user.displayName)}.</p>${emailFooter()}`,
-            actor: session.user.displayName,
+            actorId: session.user.userId,
           },
         );
       } else {
-        // Nobody was counting on it; a buzz is enough, an email is not.
+        // Unclaimed, or claimed by someone who has since left the carpool.
+        // Nobody is counting on it; a buzz is enough, an email is not.
         await notify('members', {
           title: 'Shift removed',
           body: `The unclaimed shift on ${when} was removed.`,
-          actor: session.user.displayName,
+          actorId: session.user.userId,
         });
       }
     }
@@ -74,7 +82,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireUser();
   if (!session.ok) return session.response;
-  const { displayName, isAdmin } = session.user;
+  const { userId, displayName, isAdmin } = session.user;
 
   try {
     const id = parseEventId((await params).id);
@@ -118,15 +126,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         const wasRange = `${formatTimeString(previous.startTime)}–${formatTimeString(previous.endTime)}`;
         const nowRange = `${formatTimeString(startTime)}–${formatTimeString(endTime)}`;
 
-        if (previous.claimed_by) {
+        const claimer = await resolveOwner({
+          ownerId: previous.claimed_by_id,
+          ownerName: previous.claimed_by,
+        });
+
+        if (claimer) {
           await notify(
-            { names: [previous.claimed_by] },
+            { userIds: [claimer.userId] },
             {
               title: 'Shift time changed',
               body: `Your shift on ${day} moved to ${nowRange} (was ${wasRange}).`,
               subject: 'A shift you claimed was rescheduled',
               html: `<p>The shift you claimed on <strong>${escapeHtml(day)}</strong> now runs <strong>${escapeHtml(nowRange)}</strong>, moved from ${escapeHtml(wasRange)} by ${escapeHtml(displayName)}.</p>${emailFooter()}`,
-              actor: displayName,
+              actorId: userId,
             },
           );
         } else {
@@ -136,7 +149,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             body: `The open shift on ${day} moved to ${nowRange} (was ${wasRange}).`,
             subject: 'An open shift was rescheduled',
             html: `<p>The open shift on <strong>${escapeHtml(day)}</strong> now runs <strong>${escapeHtml(nowRange)}</strong>, moved from ${escapeHtml(wasRange)} by ${escapeHtml(displayName)}.</p>${emailFooter()}`,
-            actor: displayName,
+            actorId: userId,
           });
         }
       }
@@ -153,22 +166,29 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // Normally the action is attributed to the signed-in user and nobody else.
-    // An admin may file one for another driver, but only for a name on the
+    // An admin may file one for another driver, but only for someone on the
     // roster -- never an arbitrary string from the request body.
-    let actingAs = displayName;
+    let actor: PersonRef = { userId, displayName };
     const onBehalf = onBehalfOf !== undefined && onBehalfOf !== null && onBehalfOf !== displayName;
     if (onBehalf) {
       if (!isAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      const roster = await listDriverNames();
-      if (typeof onBehalfOf !== 'string' || !roster.includes(onBehalfOf)) {
+      // Resolved to a real member so the claim is recorded against their id,
+      // not just the name the client happened to send.
+      const roster = await listDrivers();
+      const target =
+        typeof onBehalfOf === 'string'
+          ? roster.find((driver) => driver.displayName === onBehalfOf)
+          : undefined;
+      if (!target) {
         return NextResponse.json({ error: 'Unknown driver' }, { status: 400 });
       }
-      actingAs = onBehalfOf;
+      actor = target;
     }
+    const actingAs = actor.displayName;
 
-    const result = await applyShiftAction(id, action, actingAs, {
+    const result = await applyShiftAction(id, action, actor, {
       // Overriding an existing claim is an admin-only act of reassignment.
       override: isAdmin && override === true,
     });
@@ -187,7 +207,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const event = result.event;
 
     if (action === 'decline') {
-      if (isUncovered(event, await listCoveringDriverNames())) {
+      if (isUncovered(event, await listCoveringDrivers())) {
         const declined = event.declined_by ?? [];
         await notify('admins', {
           title: '🚨 No Coverage for Shift',
@@ -217,7 +237,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         html: `<p><strong>${escapeHtml(actingAs)}</strong> ${bodyText} the shift on <strong>${escapeHtml(event.date)}</strong> at <strong>${escapeHtml(event.startTime)}</strong>.</p>${attribution}${emailFooter()}`,
         // The admin filing an act-as is the actor; the driver it is filed for
         // still hears about it if they are an admin themselves.
-        actor: displayName,
+        actorId: userId,
       });
     }
 

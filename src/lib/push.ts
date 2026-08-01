@@ -1,5 +1,6 @@
 import webpush from 'web-push';
 import { sql } from '@vercel/postgres';
+import type { PersonRef } from './identity';
 
 /** What the push service worker in `worker/index.ts` knows how to display. */
 export interface PushPayload {
@@ -16,14 +17,18 @@ interface SubscriptionRow {
 }
 
 /**
- * Deliver a push notification to every device the named users have registered.
+ * Deliver a push notification to every device these people have registered.
  *
- * Targets are display names -- the key subscriptions are stored under. Expired
- * subscriptions are pruned as they are discovered. Failures are logged and
- * swallowed: a notification is never worth failing the action it describes.
+ * Subscriptions are matched by Clerk id, falling back to the display name for
+ * device registrations made before the identity migration. That fallback is why
+ * a rename no longer silences someone: the id keeps matching even once the name
+ * it was registered under is gone.
+ *
+ * Expired subscriptions are pruned as they are discovered. Failures are logged
+ * and swallowed: a notification is never worth failing the action it describes.
  */
 export async function sendPushNotification(
-  target: string | string[] | 'all',
+  targets: PersonRef[],
   payload: PushPayload,
 ): Promise<void> {
   try {
@@ -37,19 +42,17 @@ export async function sendPushNotification(
 
     webpush.setVapidDetails('mailto:notifications@triddle.dev', publicKey, privateKey);
 
-    let subscriptions: SubscriptionRow[];
-    if (target === 'all') {
-      const { rows } = await sql<SubscriptionRow>`SELECT * FROM subscriptions`;
-      subscriptions = rows;
-    } else {
-      const names = Array.isArray(target) ? target : [target];
-      if (names.length === 0) return;
-      const { rows } = await sql.query<SubscriptionRow>(
-        'SELECT * FROM subscriptions WHERE user_name = ANY($1)',
-        [names],
-      );
-      subscriptions = rows;
-    }
+    if (targets.length === 0) return;
+
+    // The name arm is scoped to rows with no id, so a subscription that has been
+    // backfilled is only ever matched by id -- a name later reused by another
+    // member cannot pull someone else's devices into the delivery.
+    const { rows: subscriptions } = await sql.query<SubscriptionRow>(
+      `SELECT * FROM subscriptions
+       WHERE user_id = ANY($1)
+          OR (user_id IS NULL AND user_name = ANY($2))`,
+      [targets.map((t) => t.userId), targets.map((t) => t.displayName)],
+    );
 
     if (subscriptions.length === 0) return;
 

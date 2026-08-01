@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import Dashboard from '../../components/Dashboard';
-import { getSessionUser, listCoveringDriverNames } from '@/lib/auth';
+import { getSessionUser, listCoveringDrivers } from '@/lib/auth';
 import { feedUrlFor } from '@/lib/calendar-feed';
 import { SITE_URL } from '@/lib/site';
 
@@ -45,7 +45,7 @@ export default async function CalendarPage() {
   // The drivers coverage is judged against, resolved from the same source the
   // API uses so the dashboard and the alerts cannot disagree about whether a
   // shift still has someone who could take it.
-  const coveringDrivers = await listCoveringDriverNames();
+  const coveringDrivers = await listCoveringDrivers();
 
   // Null when `CALENDAR_FEED_SECRET` is unset; the dashboard then hides the
   // subscribe control rather than offering a URL that would 401.

@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Build, typecheck and lint
+    name: Build, typecheck, lint and test
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -38,6 +38,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Covers the pure libraries only -- coverage rules, schedule dates, iCal
+      # generation and identity matching. Nothing here needs Postgres or Clerk,
+      # which is exactly why these are the parts worth pinning down.
+      - name: Test
+        run: npm test
 
       # No secrets: the app is built with placeholder-free config, and any route
       # needing a key falls back at build time. This is the check that would
