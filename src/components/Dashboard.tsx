@@ -5,6 +5,7 @@ import { format, startOfWeek, addDays, subDays } from 'date-fns';
 import { X, CalendarPlus, Trash2, Moon, Sun, ChevronLeft, ChevronRight, MessageCircle, Send, BellRing } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
 import { isUncovered } from '@/lib/coverage';
+import { formatTimeString } from '@/lib/schedule-dates';
 
 interface Comment {
   id: number;
@@ -85,6 +86,11 @@ interface DashboardProps {
   userGroup: string;
   /** The drivers a shift can be covered by, for the no-coverage check. */
   coveringDrivers: string[];
+  /**
+   * This user's signed iCal subscribe URL, or null when the feed is not
+   * configured on the server.
+   */
+  feedUrl?: string | null;
 }
 
 export default function Dashboard({
@@ -92,6 +98,7 @@ export default function Dashboard({
   driverName,
   userGroup,
   coveringDrivers,
+  feedUrl,
 }: DashboardProps) {
   const [events, setEvents] = useState<EventData[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -117,6 +124,12 @@ export default function Dashboard({
   // who was actually chased rather than pressing again in the dark.
   const [remindState, setRemindState] = useState<'idle' | 'sending'>('idle');
   const [remindResult, setRemindResult] = useState<string | null>(null);
+
+  // Submitting the tray sends an admin summary email, so a double click would
+  // both race itself and mail the same digest twice.
+  const [submitState, setSubmitState] = useState<'idle' | 'saving'>('idle');
+  // Feedback for the copy-the-feed-URL button.
+  const [feedCopied, setFeedCopied] = useState(false);
 
   const isMounted = useSyncExternalStore(
     hydratedStore.subscribe,
@@ -388,7 +401,9 @@ export default function Dashboard({
   };
 
   const submitPendingUpdates = async () => {
+    if (submitState === 'saving') return;
     setActionError(null);
+    setSubmitState('saving');
     try {
       const res = await fetch(`${API_BASE}/api/events/batch_update`, {
         method: 'PUT',
@@ -417,6 +432,8 @@ export default function Dashboard({
       fetchEvents();
     } catch {
       setActionError('Could not reach the server. Please try again.');
+    } finally {
+      setSubmitState('idle');
     }
   };
 
@@ -479,11 +496,24 @@ export default function Dashboard({
     fetchEvents();
   };
 
-  const formatTime = (time: string) => {
-    const [h, m] = time.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+  /**
+   * Hand the subscribe URL to the clipboard.
+   *
+   * A copy rather than a link: the browser cannot subscribe to a feed, the
+   * calendar app has to be given the URL, and `webcal:` handling is too
+   * inconsistent across platforms to rely on.
+   */
+  const copyFeedUrl = async () => {
+    if (!feedUrl) return;
+    try {
+      await navigator.clipboard.writeText(feedUrl);
+      setFeedCopied(true);
+      setTimeout(() => setFeedCopied(false), 2500);
+    } catch {
+      // Clipboard access can be refused; showing the URL still lets them copy
+      // it by hand.
+      window.prompt('Copy this URL into your calendar app:', feedUrl);
+    }
   };
 
   const nextShift = events
@@ -509,6 +539,15 @@ export default function Dashboard({
                 <button onClick={togglePushNotifications} style={{ background: 'transparent', border: 'none', color: isPushEnabled ? '#4caf50' : 'var(--text-muted)', fontSize: '0.85rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
                   {isPushEnabled ? '🔔 Push Enabled' : '🔕 Enable Push'}
                 </button>
+                {feedUrl && (
+                  <button
+                    onClick={copyFeedUrl}
+                    title="Copy a link you can subscribe to in Google or Apple Calendar"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '0.85rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                  >
+                    {feedCopied ? '📅 Link copied' : '📅 Subscribe in calendar'}
+                  </button>
+                )}
               </div>
             </div>
             <div className="header-actions">
@@ -556,7 +595,7 @@ export default function Dashboard({
               <div className="up-next-widget" style={{ background: isUncovered(nextShift, coveringDrivers) ? '#d32f2f' : 'var(--color-shift)' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, letterSpacing: '-0.02em' }}>Up Next: {shiftLabel(nextShift)}</h3>
-                  <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {formatTime(nextShift.startTime)}</p>
+                  <p style={{ margin: '0.2rem 0 0 0', opacity: 0.9 }}>{format(new Date(`${nextShift.date}T00:00:00`), 'EEEE, MMMM d')} at {formatTimeString(nextShift.startTime)}</p>
                   {trafficData && (
                      <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                        <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: trafficData.color }}></span>
@@ -620,7 +659,7 @@ export default function Dashboard({
                               statusClass = 'neutral';
                             }
 
-                            const timeString = `${formatTime(ev.startTime)} - ${formatTime(ev.endTime)}`;
+                            const timeString = `${formatTimeString(ev.startTime)} - ${formatTimeString(ev.endTime)}`;
                             const commentCount = ev.comments?.length || 0;
 
                             return (
@@ -658,11 +697,14 @@ export default function Dashboard({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                   <div>
                     <h2 style={{ margin: 0, fontSize: '1.8rem', color: 'var(--black)', fontWeight: 600, letterSpacing: '-0.02em' }}>
-                      {selectedEventId ? format(new Date(`${selectedEvent?.date}T00:00:00`), 'EEEE, MMMM d') : 'New Shift'}
+                      {/* `selectedEvent` can be missing while the modal is open --
+                          another admin deletes the shift and the next refresh drops
+                          it. Formatting its absent date threw and blanked the page. */}
+                      {selectedEvent ? format(new Date(`${selectedEvent.date}T00:00:00`), 'EEEE, MMMM d') : selectedEventId ? 'Shift' : 'New Shift'}
                     </h2>
-                    {selectedEventId && (
+                    {selectedEvent && (
                       <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-muted)', fontSize: '1rem' }}>
-                        {formatTime(selectedEvent?.startTime || '')} - {formatTime(selectedEvent?.endTime || '')}
+                        {formatTimeString(selectedEvent.startTime)} - {formatTimeString(selectedEvent.endTime)}
                       </p>
                     )}
                   </div>
@@ -933,8 +975,13 @@ export default function Dashboard({
           {pendingUpdates.length > 0 && (
             <div style={{ position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)', background: 'var(--black)', color: 'var(--bg-main)', padding: '1rem 2rem', borderRadius: '30px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: '1.5rem', zIndex: 100 }}>
               <span style={{ fontWeight: 600 }}>{pendingUpdates.length} shift(s) pending</span>
-              <button className="editorial-btn" style={{ background: 'var(--bg-main)', color: 'var(--black)', borderColor: 'transparent', padding: '8px 20px', borderRadius: '20px' }} onClick={submitPendingUpdates}>
-                Submit Choices
+              <button
+                className="editorial-btn"
+                style={{ background: 'var(--bg-main)', color: 'var(--black)', borderColor: 'transparent', padding: '8px 20px', borderRadius: '20px', opacity: submitState === 'saving' ? 0.6 : 1, cursor: submitState === 'saving' ? 'default' : 'pointer' }}
+                onClick={submitPendingUpdates}
+                disabled={submitState === 'saving'}
+              >
+                {submitState === 'saving' ? 'Submitting…' : 'Submit Choices'}
               </button>
             </div>
           )}

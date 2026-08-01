@@ -42,11 +42,18 @@ export function formatDateString(date: string): string {
   }).format(new Date(`${date}T12:00:00Z`));
 }
 
-/** e.g. "7:30 AM" from a stored `HH:MM`. */
+/**
+ * e.g. "7:30 AM" from a stored `HH:MM`.
+ *
+ * Anything that is not a time is handed back untouched. Callers include the
+ * dashboard, which renders rows the server may have deleted underneath it, so
+ * this has to survive an empty or absent value rather than throwing.
+ */
 export function formatTimeString(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return time;
+  const match = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
+  if (!match) return time ?? '';
+  const h = Number(match[1]);
   const suffix = h >= 12 ? 'PM' : 'AM';
   const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`;
+  return `${hour12}:${match[2]} ${suffix}`;
 }

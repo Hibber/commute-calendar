@@ -3,6 +3,7 @@ import { sql } from '@vercel/postgres';
 import { requireUser } from '@/lib/auth';
 import { notify } from '@/lib/notify';
 import { parseEventId } from '@/lib/events';
+import { serverError } from '@/lib/http';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireUser();
@@ -44,6 +45,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json(rows[0]);
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Posting comment failed', error);
   }
 }

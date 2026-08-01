@@ -1,0 +1,26 @@
+# Drives the "time to leave" alerts on schedules Vercel's Hobby plan will not
+# run: Hobby schedules crons daily only, and this job needs to check every few
+# minutes through the morning. The route itself does not care who calls it, only
+# that the bearer secret matches, so this is interchangeable with the
+# `vercel.json` cron entry -- use whichever the plan allows, not both.
+#
+# Requires a `CRON_SECRET` repository secret matching the deployment's.
+name: Departure alert ping
+
+on:
+  schedule:
+    # Every 15 minutes, 12:00-18:45 UTC -- 4:00-10:45 AM Pacific across both
+    # PST and PDT, since GitHub schedules in UTC and does not track DST.
+    - cron: '*/15 12-18 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger departure sweep
+        run: |
+          curl -fsS --max-time 60 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://schedule.triddle.dev/api/cron/departure

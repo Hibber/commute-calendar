@@ -1,11 +1,11 @@
 import { Resend } from 'resend';
 import { listRecipients } from './auth';
 import { sendPushNotification } from './push';
+import { SITE_URL } from './site';
 
 // Vercel build will crash if this is undefined during static analysis, so we provide a fallback
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build');
 
-const SITE_URL = 'https://schedule.triddle.dev';
 const FROM = 'Commute Calendar <notifications@triddle.dev>';
 
 /**
@@ -54,6 +54,22 @@ export interface Notification {
 /** A link back to the site, appended to every email body. */
 export function emailFooter(): string {
   return `<p>Check the <a href="${SITE_URL}">Commute Calendar</a> for details.</p>`;
+}
+
+/**
+ * Escape a value for interpolation into email HTML.
+ *
+ * Display names come from Clerk's `firstName`, which the user sets themselves,
+ * and shift fields come from the request body. Both end up inside notification
+ * emails, so neither can be trusted to be markup-free.
+ */
+export function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**

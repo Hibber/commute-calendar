@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listCoveringDriverNames, requireUser } from '@/lib/auth';
-import { emailFooter, notify } from '@/lib/notify';
+import { emailFooter, escapeHtml, notify } from '@/lib/notify';
+import { serverError } from '@/lib/http';
 import { applyShiftAction, isShiftAction, parseEventId, type ShiftAction } from '@/lib/events';
 import { isUncovered } from '@/lib/coverage';
 
@@ -69,7 +70,7 @@ export async function PUT(request: Request) {
       } else {
         actionStr = action === 'borrow' ? 'offered their car' : 'is driving (you are riding with them)';
       }
-      summaryItems.push(`<li><strong>${event.date}</strong> at <strong>${event.startTime}</strong>: ${actionStr}</li>`);
+      summaryItems.push(`<li><strong>${escapeHtml(event.date)}</strong> at <strong>${escapeHtml(event.startTime)}</strong>: ${actionStr}</li>`);
 
       // Nobody left who could drive this one.
       if (isUncovered(event, coveringDrivers)) {
@@ -81,7 +82,7 @@ export async function PUT(request: Request) {
       }
     }
 
-    let summaryHtml = `<p><strong>${driverName}</strong> submitted choices for ${updatedEvents.length} shift(s):</p><ul>`;
+    let summaryHtml = `<p><strong>${escapeHtml(driverName)}</strong> submitted choices for ${updatedEvents.length} shift(s):</p><ul>`;
     summaryHtml += summaryItems.join('');
     summaryHtml += '</ul>';
     if (conflicts.length > 0) {
@@ -109,12 +110,12 @@ export async function PUT(request: Request) {
         title: '🚨 No Coverage for Shift',
         body: `Shift on ${urgent.date} at ${urgent.startTime} was declined by ${urgent.declined_by.join(', ')}.`,
         subject: 'URGENT: No Coverage for Shift',
-        html: `<p>The shift on <strong>${urgent.date}</strong> at <strong>${urgent.startTime}</strong> has been declined by ${urgent.declined_by.join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`,
+        html: `<p>The shift on <strong>${escapeHtml(urgent.date)}</strong> at <strong>${escapeHtml(urgent.startTime)}</strong> has been declined by ${urgent.declined_by.map(escapeHtml).join(' and ')}.</p><p>You will need to arrange alternate transportation.</p>`,
       });
     }
 
     return NextResponse.json({ success: true, events: updatedEvents, conflicts });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Batch update failed', error);
   }
 }

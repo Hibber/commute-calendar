@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { listDriverNames, requireAdmin } from '@/lib/auth';
+import { serverError } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,6 @@ export async function GET() {
   try {
     return NextResponse.json({ drivers: await listDriverNames() });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Listing drivers failed', error);
   }
 }

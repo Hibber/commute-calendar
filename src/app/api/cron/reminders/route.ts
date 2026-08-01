@@ -3,6 +3,8 @@ import { sql } from '@vercel/postgres';
 import { listRecipients } from '@/lib/auth';
 import { emailFooter, notify } from '@/lib/notify';
 import { isUncovered } from '@/lib/coverage';
+import { isAuthorizedCron } from '@/lib/cron-auth';
+import { serverError } from '@/lib/http';
 import {
   addDaysToDateString,
   formatDateString,
@@ -30,20 +32,6 @@ interface ShiftRow {
   claimed_by: string | null;
   status: string;
   declined_by: string[] | null;
-}
-
-/**
- * Whether this request really came from the scheduler.
- *
- * Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without the check the
- * route is an open endpoint anyone could hit to spam the carpool with pushes.
- * If `CRON_SECRET` is unset the route refuses to run rather than defaulting to
- * open -- a misconfiguration should stop reminders, not expose them.
- */
-function isAuthorizedCron(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return request.headers.get('authorization') === `Bearer ${secret}`;
 }
 
 /**
@@ -128,7 +116,6 @@ export async function GET(request: Request) {
       uncoveredTomorrow: uncoveredTomorrow.length,
     });
   } catch (error) {
-    console.error('Reminder sweep failed:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Reminder sweep failed', error);
   }
 }

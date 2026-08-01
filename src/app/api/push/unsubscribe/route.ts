@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { requireUser } from '@/lib/auth';
+import { serverError } from '@/lib/http';
 
 export async function POST(request: Request) {
   const session = await requireUser();
@@ -22,6 +23,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Push unsubscribe failed', error);
   }
 }

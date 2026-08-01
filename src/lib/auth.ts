@@ -19,6 +19,10 @@ export interface SessionUser {
    * not been put in a group.
    */
   group: string;
+  /**
+   * Whether this account is actually part of the carpool. See `isMemberUser`.
+   */
+  isMember: boolean;
 }
 
 type AuthSuccess = { ok: true; user: SessionUser };
@@ -51,6 +55,23 @@ export function isAdminUser(user: User): boolean {
 }
 
 /**
+ * Whether this account belongs to the carpool.
+ *
+ * Signing in is not the same as being a member. Clerk will happily accept any
+ * Google account, and without this an unknown signup would read the whole
+ * schedule, claim shifts, and land in every notification fan-out.
+ *
+ * Membership is an explicitly set `publicMetadata.group`. The group already
+ * exists to word shift actions, and the session defaults it to `members` when
+ * unset -- so the presence of the key, rather than its value, is what
+ * distinguishes someone an admin has placed in the carpool from someone who
+ * merely signed in. Admins are members by definition.
+ */
+export function isMemberUser(user: User): boolean {
+  return isAdminUser(user) || user.publicMetadata?.group !== undefined;
+}
+
+/**
  * A person notifications can be delivered to. `displayName` is the key push
  * subscriptions are stored under; `email` is the Clerk primary address, or
  * null when the account somehow has none.
@@ -72,7 +93,11 @@ export interface Recipient {
 export async function listRecipients(): Promise<Recipient[]> {
   const client = await clerkClient();
   const { data } = await client.users.getUserList({ limit: 100 });
-  return data.map((user) => {
+  // Non-members are excluded here rather than at each call site, which also
+  // keeps them out of the act-as roster and out of the coverage calculation --
+  // a stranger who never declines would otherwise make a shift look answerable
+  // forever.
+  return data.filter(isMemberUser).map((user) => {
     const primary =
       user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId) ??
       user.emailAddresses[0];
@@ -98,6 +123,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     displayName: displayNameFor(user),
     isAdmin: isAdminUser(user),
     group: (user.publicMetadata?.group as string) || 'members',
+    isMember: isMemberUser(user),
   };
 }
 
@@ -125,13 +151,25 @@ export async function listCoveringDriverNames(): Promise<string[]> {
   );
 }
 
-/** Requires a signed-in user. Every route that touches carpool data uses this. */
+/**
+ * Requires a signed-in member. Every route that touches carpool data uses this.
+ *
+ * Signed in but not in the carpool is a 403 rather than a 401: the credentials
+ * are fine, the account simply has no business here, and signing in again would
+ * not change that.
+ */
 export async function requireUser(): Promise<AuthResult> {
   const user = await getSessionUser();
   if (!user) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    };
+  }
+  if (!user.isMember) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
     };
   }
   return { ok: true, user };

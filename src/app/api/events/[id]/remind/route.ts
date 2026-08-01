@@ -4,6 +4,7 @@ import { listRecipients, requireAdmin } from '@/lib/auth';
 import { emailFooter, notify } from '@/lib/notify';
 import { parseEventId } from '@/lib/events';
 import { formatDateString, formatTimeString } from '@/lib/schedule-dates';
+import { serverError } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,7 +79,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ notified: outstanding.length, drivers: outstanding });
   } catch (error) {
-    console.error('Reminder failed:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return serverError('Reminder failed', error);
   }
 }
