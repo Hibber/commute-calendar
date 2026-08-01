@@ -20,11 +20,13 @@ export const dynamic = 'force-dynamic';
  * traffic says it takes today. The difference is when the driver has to leave,
  * which is the thing worth a push -- the shift time itself they already know.
  *
- * Meant to be pinged every 15 minutes through the morning. Note that Vercel's
- * Hobby plan only schedules crons daily, so the `vercel.json` entry works on
- * Pro; on Hobby the same job is driven by `.github/workflows/departure-ping.yml`,
- * which needs no Vercel plan at all. The route does not care who calls it, only
- * that the bearer secret matches.
+ * Meant to be pinged every 15 minutes through the morning, which is why the
+ * schedule lives in `.github/workflows/departure-ping.yml` and not in
+ * `vercel.json`: Vercel's Hobby plan allows daily crons only, and a
+ * sub-daily entry there does not degrade -- it fails the deployment outright.
+ * On Pro the entry can move back into `vercel.json` and the workflow be
+ * dropped. The route does not care who calls it, only that the bearer secret
+ * matches.
  */
 
 /** Minutes of slack between the alert and actually needing to be moving. */
